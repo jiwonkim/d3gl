@@ -23,6 +23,13 @@ A D3 plugin to display spatial data on a globe. Uses WebGL and ThreeJS.
 
 API inspired by [Towards Reusable Charts](http://bost.ocks.org/mike/chart/).
 
+Examples
+--------
+* [Hello World](http://bl.ocks.org/4056536)
+* Global realtime flights
+* Point cloud (Tikal)??
+* CAD model??
+* Minecraft??
 
 Steps
 -----
@@ -37,14 +44,6 @@ Steps
 * Visuals (atmosphere, etc)
 * Interaction (zoom and rotate)
 * Selection
-
-Examples
---------
-* [Hello World](http://bl.ocks.org/4056536)
-* Global realtime flights
-* Point cloud (Tikal)??
-* CAD model??
-* Minecraft??
 
 Built with
 ----------
