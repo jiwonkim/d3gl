@@ -88,3 +88,11 @@ Demos
 * CAD model??
 * Minecraft??
 
+Inspired by [Towards Reusable Charts](http://bost.ocks.org/mike/chart/).
+
+Built with
+----------
+* [d3.js](http://mbostock.github.com/d3/)
+* [jquery](http://jquery.com/)
+* [mousewheel.jquery.js](http://brandonaaron.net/code/mousewheel/docs)
+* [nasa blue marble](http://earthobservatory.nasa.gov/Features/BlueMarble/BlueMarble_monthlies.php) imagery
