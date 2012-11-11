@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>D3GL Rainfall</title>
+    <link rel="stylesheet" href="../css/demo.css" />
+</head>
+<body>
+
+<h1>D3GL Rainfall</h1>
+<canvas></canvas>
+
+<script type="text/javascript" src="../js/jquery-1.8.2.js"></script>
+<script type="text/javascript" src="../js/d3.v2.js"></script>
+<script type="text/javascript" src="../js/RequestAnimationFrame.js"></script>
+<script type="text/javascript" src="../js/three.js"></script>
+<script type="text/javascript" src="../js/d3gl.js"></script>
+<!-- All scripts above are included here:
+<script type="text/javascript" src="../js/d3gl.min.js"></script> -->
+
+<script type="text/javascript">
+var rainfall = []; // TODO
+
+var globe = d3.gl.globe()
+    .width(600)
+    .height(400)
+    .latitude(function(d){return d.lat;})
+    .longitude(function(d){return d.lon;});
+console.log(globe.texture());
+d3.select("canvas").datum(rainfall).call(globe);
+
+</script>
+</body>
+</html>

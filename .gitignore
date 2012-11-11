@@ -1,0 +1,6 @@
+*.exe
+*.out
+*.pyc
+*.swp
+*.min.js
+~*
