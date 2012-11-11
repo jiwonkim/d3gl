@@ -16,16 +16,16 @@ d3.gl.globe = function(){
     var width = 500;
     var height = 500;
     // texture name
-    var texture = 'continentoutlines';
+    var texture = '../img/earth-tex.png';
     // callbacks. data => lat, lon, etc
-    var fnLat, fnLon;
+    var fnLat, fnLon, fnTex;
 	// constants
 	var VIEW_ANGLE = 45,
 	    NEAR = 1,
 	    FAR = 10000;
 
     // sets up a ThreeJS globe
-    function initGL(gl){
+    function initGL(gl, tex){
         var scene = new THREE.Scene();
 
         // camera
@@ -36,7 +36,7 @@ d3.gl.globe = function(){
         scene.add(camera);
 
         // globe model
-        var texture = THREE.ImageUtils.loadTexture("../tex/earth-tex.png");
+        var texture = THREE.ImageUtils.loadTexture(tex);
         var sphereMaterial = new THREE.MeshLambertMaterial({
             color: 0xffffff,
             map: texture
@@ -69,15 +69,15 @@ d3.gl.globe = function(){
         // render into each canvas
         g.each(function(d,i){
             if(this.tagName == "canvas") throw "D3GL can only render into Canvas elements";
+            var texture = fnTex(d);
             console.log("Rendering. "+
                 "Dimensions: "+width+","+height+" "+
                 "Texture: "+texture);
 
             // 3js state
             var gl = {};
-            initGL(gl);
+            initGL(gl, texture);
             this.appendChild(gl.renderer.domElement);
-            //$(this).html(gl.domElement);
             
             // called 60 times per second
             function render(){
@@ -113,7 +113,8 @@ d3.gl.globe = function(){
     }
     globe.texture = function(val){
         if(!arguments.length) return texture;  
-        texture = val;
+        if(typeof val === "function") fnTex = val;
+        else fnTex = function(){return val;}
         return globe;
     }
     return globe;

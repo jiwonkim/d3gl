@@ -7,7 +7,8 @@
 <body>
 
 <h1>D3GL Rainfall</h1>
-<div id="globe"></div>
+<span ></span>
+<span ></span>
 
 <script type="text/javascript" src="../js/jquery-1.8.2.js"></script>
 <script type="text/javascript" src="../js/d3.v2.js"></script>
@@ -21,10 +22,13 @@
 $(function(){
 var rainfall = []; // TODO
 
+var textures = ["../img/earth-tex.png", "../img/earth-bump.jpg"];
 var globe = d3.gl.globe()
     .latitude(function(d){return d.lat;})
-    .longitude(function(d){return d.lon;});
-d3.select("#globe").datum(rainfall).call(globe);
+    .longitude(function(d){return d.lon;})
+    .texture(function(d){return d;});
+
+d3.selectAll("span").data(textures).call(globe);
 });
 
 </script>
