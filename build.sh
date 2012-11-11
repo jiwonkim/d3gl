@@ -8,3 +8,5 @@ cat js/jquery-1.8.2.js \
     js/RequestAnimationFrame.js \
     js/d3gl.js \
     | ./tools/jsmin > js/d3gl.min.js
+
+markdown < README.md > README.html
