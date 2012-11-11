@@ -1,14 +1,12 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>D3GL Rainfall</title>
+    <title>D3GL Earth</title>
     <link rel="stylesheet" href="../css/demo.css" />
 </head>
 <body>
 
-<h1>D3GL Rainfall</h1>
-<span ></span>
-<span ></span>
+<h1>D3GL Earth</h1>
 
 <script type="text/javascript" src="../js/jquery-1.8.2.js"></script>
 <script type="text/javascript" src="../js/jquery.mousewheel.js"></script>
@@ -23,13 +21,20 @@
 $(function(){
 var rainfall = []; // TODO
 
-var textures = ["../img/earth-tex.png", "../img/earth-bump.jpg"];
+var textures = [
+    "../img/earth-tex.png", 
+    "../img/earth-night-tex.jpg",
+    "../img/earth-bump.jpg"
+];
 var globe = d3.gl.globe()
     .latitude(function(d){return d.lat;})
     .longitude(function(d){return d.lon;})
     .texture(function(d){return d;});
 
-d3.selectAll("span").data(textures).call(globe);
+d3.select("body").selectAll("span")
+    .data(textures).enter().append("span")
+    .call(globe);
+    
 });
 
 </script>

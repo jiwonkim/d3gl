@@ -14,21 +14,22 @@ d3.gl = {};
 d3.gl.globe = function(){
     // PUBLIC PROPERTIES
     // viewport dimensions, in pixels
-    var width = 500;
-    var height = 500;
+    var width = 400;
+    var height = 400;
     // texture name
     var texture = '../img/earth-tex.png';
     // callbacks. data => lat, lon, etc
     var fnLat, fnLon, fnTex;
 
     // PRIVATE VARS
+    var zoom = 2.0, rotation = [0, 0]; // azith, angle
 	// constants
 	var VIEW_ANGLE = 45,
-	    NEAR = 0.1,
+	    NEAR = 0.01,
 	    FAR = 100;
     var MOUSE_SENSITIVITY = [0.005, 0.005];
     var ZOOM_SENSITIVITY = 0.1; // (0 = no effect, 1 = infinite)
-    var zoom = 2.0, rotation = [0, 0]; // azith, angle
+    var MIN_ZOOM = 0.5, MAX_ZOOM = 2;
 
     // sets up a ThreeJS globe
     function initGL(gl, tex){
@@ -86,6 +87,7 @@ d3.gl.globe = function(){
             dragStart = null;
         }).mousewheel(function(evt, delta, dx, dy){
             zoom *= Math.pow(1-ZOOM_SENSITIVITY, dy);
+            zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
         });
         function update(evt){
             rotation[1] += (evt.pageX - dragStart[0])*MOUSE_SENSITIVITY[0]*zoom;
