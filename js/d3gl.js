@@ -36,10 +36,12 @@ d3.gl.globe = function(){
         scene.add(camera);
 
         // globe model
+        var texture = THREE.ImageUtils.loadTexture("../tex/earth-tex.png");
         var sphereMaterial = new THREE.MeshLambertMaterial({
-            color: 0xCC0000
+            color: 0xffffff,
+            map: texture
         });
-        var radius = 200, segments = 16, rings = 16;
+        var radius = 300, segments = 80, rings = 40;
         var sphere = new THREE.Mesh(
            new THREE.SphereGeometry(radius, segments, rings),
            sphereMaterial);
@@ -61,24 +63,6 @@ d3.gl.globe = function(){
         gl.scene = scene;
         gl.camera = camera;
     }
-    function initGL2(gl){
-        gl.scene = new THREE.Scene();
-
-        // camera
-        gl.camera = new THREE.Camera( 75, width/height, 1, 10000 );
-        gl.camera.position.z = 1000;
-        gl.scene.add(gl.camera);
-
-        // model
-        var geometry = new THREE.CubeGeometry( 200, 200, 200 );
-        var material = new THREE.MeshBasicMaterial( { color: 0xff0000, wireframe: true } );
-        var mesh = new THREE.Mesh( geometry, material );
-        gl.scene.add( mesh );
-
-        // renderer
-        gl.renderer = new THREE.WebGLRenderer({canvas:gl.canvas});
-        gl.renderer.setSize( width, height );
-    }
 
     // renders. see http://bost.ocks.org/mike/chart/
     function globe(g){
@@ -90,9 +74,9 @@ d3.gl.globe = function(){
                 "Texture: "+texture);
 
             // 3js state
-            var gl = {}; //{canvas:this};
+            var gl = {};
             initGL(gl);
-            $("#foo")[0].appendChild(gl.renderer.domElement);
+            this.appendChild(gl.renderer.domElement);
             //$(this).html(gl.domElement);
             
             // called 60 times per second
