@@ -12,6 +12,7 @@ if(!d3 || !jQuery || !THREE || !requestAnimationFrame){
 
 d3.gl = {};
 d3.gl.globe = function(){
+    // PUBLIC PROPERTIES
     // viewport dimensions, in pixels
     var width = 500;
     var height = 500;
@@ -19,10 +20,15 @@ d3.gl.globe = function(){
     var texture = '../img/earth-tex.png';
     // callbacks. data => lat, lon, etc
     var fnLat, fnLon, fnTex;
+
+    // PRIVATE VARS
 	// constants
 	var VIEW_ANGLE = 45,
-	    NEAR = 1,
-	    FAR = 10000;
+	    NEAR = 0.1,
+	    FAR = 100;
+    var MOUSE_SENSITIVITY = [0.005, 0.005];
+    var ZOOM_SENSITIVITY = 0.1; // (0 = no effect, 1 = infinite)
+    var zoom = 2.0, rotation = [0, 0]; // azith, angle
 
     // sets up a ThreeJS globe
     function initGL(gl, tex){
@@ -32,7 +38,7 @@ d3.gl.globe = function(){
         var camera = new THREE.PerspectiveCamera(
             VIEW_ANGLE, width/height,
             NEAR, FAR);
-        camera.position.z = 1000;
+        camera.position.z = 2;
         scene.add(camera);
 
         // globe model
@@ -41,7 +47,7 @@ d3.gl.globe = function(){
             color: 0xffffff,
             map: texture
         });
-        var radius = 300, segments = 80, rings = 40;
+        var radius = 1.0, segments = 80, rings = 40;
         var sphere = new THREE.Mesh(
            new THREE.SphereGeometry(radius, segments, rings),
            sphereMaterial);
@@ -49,19 +55,49 @@ d3.gl.globe = function(){
 
         // add a point light
         var pointLight = new THREE.PointLight( 0xFFFFFF );
-        pointLight.position.x = 100;
-        pointLight.position.y = 500;
-        pointLight.position.z = 1300;
+        pointLight.position.x = 1;
+        pointLight.position.y = 5;
+        pointLight.position.z = 13;
         scene.add(pointLight);
 
         // start the renderer
-        var renderer = new THREE.WebGLRenderer();
+        var renderer = new THREE.WebGLRenderer({
+            antialias:true
+        });
         renderer.setSize(width, height);
 
         gl.mesh = sphere;
         gl.renderer = renderer;
         gl.scene = scene;
         gl.camera = camera;
+    }
+
+    function initControls(elem){
+        var dragStart;
+        $(elem).mousedown(function(evt){
+            dragStart = [evt.pageX, evt.pageY];
+        }).mousemove(function(evt){
+            if(!dragStart) return;
+            update(evt);
+            dragStart = [evt.pageX, evt.pageY];
+        }).mouseup(function(evt){
+            if(!dragStart) return;
+            update(evt);
+            dragStart = null;
+        }).mousewheel(function(evt, delta, dx, dy){
+            zoom *= Math.pow(1-ZOOM_SENSITIVITY, dy);
+        });
+        function update(evt){
+            rotation[1] += (evt.pageX - dragStart[0])*MOUSE_SENSITIVITY[0]*zoom;
+            rotation[0] += (evt.pageY - dragStart[1])*MOUSE_SENSITIVITY[1]*zoom;
+        }
+    }
+
+    // This is not quite as clean as
+    // an external stylesheet, but simpler for
+    // the end user.
+    function initStyle(elem){
+        elem.style.cursor = "pointer";
     }
 
     // renders. see http://bost.ocks.org/mike/chart/
@@ -77,12 +113,15 @@ d3.gl.globe = function(){
             // 3js state
             var gl = {};
             initGL(gl, texture);
+            initControls(gl.renderer.domElement);
+            initStyle(gl.renderer.domElement);
             this.appendChild(gl.renderer.domElement);
             
             // called 60 times per second
             function render(){
-                gl.mesh.rotation.x += 0.02;
-                gl.mesh.rotation.y += 0.01;
+                gl.mesh.rotation.x = rotation[0];
+                gl.mesh.rotation.y = rotation[1];
+                gl.camera.position.z = 1+zoom;
                 gl.renderer.render(gl.scene, gl.camera);
                 requestAnimationFrame(render);
             }
