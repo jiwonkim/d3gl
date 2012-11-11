@@ -88,6 +88,7 @@ d3.gl.globe = function(){
         }).mousewheel(function(evt, delta, dx, dy){
             zoom *= Math.pow(1-ZOOM_SENSITIVITY, dy);
             zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
+            evt.preventDefault();
         });
         function update(evt){
             rotation[1] += (evt.pageX - dragStart[0])*MOUSE_SENSITIVITY[0]*zoom;
