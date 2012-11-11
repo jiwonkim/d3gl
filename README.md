@@ -1,14 +1,7 @@
 D3GL
 ====
 
-A D3 plugin to display spatial data. Uses WebGL and ThreeJS.
-
-
-Examples
---------
-
-Option 1 - "Reusable Charts"
-----------------------------
+A D3 plugin to display spatial data on a globe. Uses WebGL and ThreeJS.
 
     d3.csv("rainfall.csv", function(data) {
         var rainMax = d3.max(data, function(d,i){return d.rainfall});
@@ -28,8 +21,11 @@ Option 1 - "Reusable Charts"
         d3.select("canvas").datum(data).call(globe);
     });
 
+API inspired by [Towards Reusable Charts](http://bost.ocks.org/mike/chart/).
 
-*Steps*
+
+Steps
+-----
 * Basic globe
 * Continent textures
 * Points
@@ -42,53 +38,13 @@ Option 1 - "Reusable Charts"
 * Interaction (zoom and rotate)
 * Selection
 
-Option 2 - Data Bindings for GL Elements
-----------------------------------------
-
-    var d3gl = d3.gl("canvas");
-
-    // POINT CLOUD 
-    var points = [{x:10,y:10,z:10,color:"#f00"}, ...];
-    var scale = d3gl.transform()
-        .scale(d3gl.boundingbox(points), d3gl.unitcube());
-    d3gl.selectAll("cube").enter().append("cube")
-        .data(points).tranform(scale)
-        .color(function(d){return d.color;})
-
-    // basic types
-    //      cube
-    //      sphere
-    //      vertices
-    //      meshes
-    // textures? texture cubes?
-    // data animation?
-    
-    // static visualization...
-    
-    // camera animation
-    d3gl.animate().zoom(2).rotate([10,90]);
-
-    // standard mouse + keyboard controls
-    d3gl.defaultCamera();
-
-
-Utilities
----------
-* *d3.gl.deg(radians)* returns degrees
-* *d3.gl.s2c(r, theta, phi)* returns xyz coordinates
-* *d3.gl.c2s(x, y, z)* returns spherical coordinates
-* *d3.gl.transform()* for creating matrix transforms
-* *d3.gl.regions()* for downloading country outlines
-
-Demos
------
-* Global rainfall
+Examples
+--------
+* [Hello World](http://bl.ocks.org/4056536)
 * Global realtime flights
 * Point cloud (Tikal)??
 * CAD model??
 * Minecraft??
-
-Inspired by [Towards Reusable Charts](http://bost.ocks.org/mike/chart/).
 
 Built with
 ----------
@@ -96,3 +52,5 @@ Built with
 * [jquery](http://jquery.com/)
 * [mousewheel.jquery.js](http://brandonaaron.net/code/mousewheel/docs)
 * [nasa blue marble](http://earthobservatory.nasa.gov/Features/BlueMarble/BlueMarble_monthlies.php) imagery
+
+<link rel="stylesheet" href="style.css"></link>
