@@ -33,20 +33,60 @@ d3.gl.globe = function(){
     var MIN_ZOOM = 0.5, MAX_ZOOM = 2;
     var CHOROPLETH_TEX = "../img/country-codes.png";
 
-    function createTextureFromData() {
-        var width = 64;
-        var height = 32;
-        var size = width*height;
-        var data = new Uint8Array(size*3);
-        for(var i=0; i< size; i++) {
-            data[i*3] = Math.floor(Math.random()*255);
-            data[i*3+1] = Math.floor(Math.random()*255);
-            data[i*3+2] = Math.floor(Math.random()*255);
-        }
+    var choroplethUtils = {
+        loadShaders: function(callback) {
+            $.get("../shaders/choropleth_fs.glsl", function(fs) {
+                $.get("../shaders/choropleth_vs.glsl", function(vs) {
+                    choroplethUtils.fs = fs;
+                    choroplethUtils.vs = vs;
+                    callback();
+                });
+            });
+        },
+        createDataTexture: function() {
+            var width = 1024;
+            var height = 1;
+            var size = width*height;
+            var data = new Uint8Array(size*3);
+            for(var i=0; i< size; i++) {
+                data[i*3] = Math.floor(Math.random()*255);
+                data[i*3+1] = Math.floor(Math.random()*255);
+                data[i*3+2] = Math.floor(Math.random()*255);
+            }
 
-        var texture = new THREE.DataTexture(data, width, height, THREE.RGBFormat);
-        texture.needsUpdate = true;
-        return texture;
+            var texture = new THREE.DataTexture(data, width, height, THREE.RGBFormat);
+            texture.needsUpdate = true;
+            return texture;
+        },
+
+        createMaterial: function(bgTexture, countryCodeTexture) {
+            var dataTexture = choroplethUtils.createDataTexture();
+            var vertexShader = choroplethUtils.vs;
+            var fragmentShader = choroplethUtils.fs;
+            //var vertexShader = $("#vertex-shader").html();
+            //var fragmentShader = $("#fragment-shader").html();
+            var uniforms = {
+                texture: {
+                    type: "t",
+                    value: THREE.ImageUtils.loadTexture(bgTexture)
+                },
+                countries: {
+                    type: "t",
+                    value: THREE.ImageUtils.loadTexture(countryCodeTexture)
+                },
+                data: {
+                    type: "t",
+                    value: dataTexture
+                }
+            };
+            var material = new THREE.ShaderMaterial({
+                vertexShader: vertexShader,
+                fragmentShader: fragmentShader,
+                uniforms: uniforms,
+            });
+
+            return material;
+        },
     }
 
     // sets up a ThreeJS globe
@@ -69,31 +109,8 @@ d3.gl.globe = function(){
                 map: texture
             });
         } else {
-            var dataTexture = createTextureFromData();
-            var vertexShader = $("#vertex-shader").html();
-            var fragmentShader = $("#fragment-shader").html();
-            var uniforms = {
-                texture: {
-                    type: "t",
-                    value: THREE.ImageUtils.loadTexture(tex)
-                },
-                countries: {
-                    type: "t",
-                    value: THREE.ImageUtils.loadTexture(CHOROPLETH_TEX)
-                },
-                data: {
-                    type: "t",
-                    value: dataTexture
-                }
-            };
-            sphereMaterial = new THREE.ShaderMaterial({
-                vertexShader: vertexShader,
-                fragmentShader: fragmentShader,
-                uniforms: uniforms,
-            });
-            
+            sphereMaterial = choroplethUtils.createMaterial(tex, CHOROPLETH_TEX);
         }
-
 
         var radius = 1.0, segments = 80, rings = 40;
         var sphere = new THREE.Mesh(
@@ -110,7 +127,7 @@ d3.gl.globe = function(){
 
         // start the renderer
         var renderer = new THREE.WebGLRenderer({
-            antialias:true
+            antialias: true
         });
         renderer.setSize(width, height);
 
@@ -154,28 +171,33 @@ d3.gl.globe = function(){
     function globe(g){
         // render into each canvas
         g.each(function(d,i){
-            if(this.tagName == "canvas") throw "D3GL can only render into Canvas elements";
+            var element = this;
+            if(element.tagName == "canvas") throw "D3GL can only render into Canvas elements";
             var texture = fnTex(d);
             console.log("Rendering. "+
                 "Dimensions: "+width+","+height+" "+
                 "Texture: "+texture);
-
-            // 3js state
-            var gl = {};
-            initGL(gl, texture);
-            initControls(gl.renderer.domElement);
-            initStyle(gl.renderer.domElement);
-            this.appendChild(gl.renderer.domElement);
             
-            // called 60 times per second
-            function render(){
-                gl.mesh.rotation.x = rotation[0];
-                gl.mesh.rotation.y = rotation[1];
-                gl.camera.position.z = 1+zoom;
-                gl.renderer.render(gl.scene, gl.camera);
-                requestAnimationFrame(render);
+            function start() {
+                // 3js state
+                var gl = {};
+                initGL(gl, texture);
+                initControls(gl.renderer.domElement);
+                initStyle(gl.renderer.domElement);
+                element.appendChild(gl.renderer.domElement);
+                
+                // called 60 times per second
+                function render(){
+                    gl.mesh.rotation.x = rotation[0];
+                    gl.mesh.rotation.y = rotation[1];
+                    gl.camera.position.z = 1+zoom;
+                    gl.renderer.render(gl.scene, gl.camera);
+                    requestAnimationFrame(render);
+                }
+                render();
             }
-            render();
+
+            choroplethUtils.loadShaders(start);
         });
     }
     globe.width = function(val){
