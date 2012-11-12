@@ -21,7 +21,7 @@ d3.gl.globe = function(){
     // callbacks. data => lat, lon, etc
     var fnLat, fnLon, fnTex;
     // callbacks for choropleth map. data, country code => rgb color
-    var fnChoropleth;
+    var fnChoropleth = true;
     // PRIVATE VARS
     var zoom = 2.0, rotation = [0, 0]; // azith, angle
 	// constants
@@ -31,6 +31,23 @@ d3.gl.globe = function(){
     var MOUSE_SENSITIVITY = [0.005, 0.005];
     var ZOOM_SENSITIVITY = 0.1; // (0 = no effect, 1 = infinite)
     var MIN_ZOOM = 0.5, MAX_ZOOM = 2;
+    var CHOROPLETH_TEX = "../img/country-codes.png";
+
+    function createTextureFromData() {
+        var width = 64;
+        var height = 32;
+        var size = width*height;
+        var data = new Uint8Array(size*3);
+        for(var i=0; i< size; i++) {
+            data[i*3] = Math.floor(Math.random()*255);
+            data[i*3+1] = Math.floor(Math.random()*255);
+            data[i*3+2] = Math.floor(Math.random()*255);
+        }
+
+        var texture = new THREE.DataTexture(data, width, height, THREE.RGBFormat);
+        texture.needsUpdate = true;
+        return texture;
+    }
 
     // sets up a ThreeJS globe
     function initGL(gl, tex){
@@ -44,11 +61,40 @@ d3.gl.globe = function(){
         scene.add(camera);
 
         // globe model
-        var texture = THREE.ImageUtils.loadTexture(tex);
-        var sphereMaterial = new THREE.MeshLambertMaterial({
-            color: 0xffffff,
-            map: texture
-        });
+        var sphereMaterial;
+        if(!fnChoropleth) {
+            var texture = THREE.ImageUtils.loadTexture(tex);
+            sphereMaterial = new THREE.MeshLambertMaterial({
+                color: 0xffffff,
+                map: texture
+            });
+        } else {
+            var dataTexture = createTextureFromData();
+            var vertexShader = $("#vertex-shader").html();
+            var fragmentShader = $("#fragment-shader").html();
+            var uniforms = {
+                texture: {
+                    type: "t",
+                    value: THREE.ImageUtils.loadTexture(tex)
+                },
+                countries: {
+                    type: "t",
+                    value: THREE.ImageUtils.loadTexture(CHOROPLETH_TEX)
+                },
+                data: {
+                    type: "t",
+                    value: dataTexture
+                }
+            };
+            sphereMaterial = new THREE.ShaderMaterial({
+                vertexShader: vertexShader,
+                fragmentShader: fragmentShader,
+                uniforms: uniforms,
+            });
+            
+        }
+
+
         var radius = 1.0, segments = 80, rings = 40;
         var sphere = new THREE.Mesh(
            new THREE.SphereGeometry(radius, segments, rings),

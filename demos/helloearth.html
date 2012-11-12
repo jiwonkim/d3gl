@@ -17,6 +17,54 @@
 <!-- All scripts above are included here:
 <script type="text/javascript" src="../js/d3gl.min.js"></script> -->
 
+<script id="fragment-shader" type="x-shader/x-fragment">
+    uniform sampler2D texture;    // background texture
+    uniform sampler2D countries;  // country codes as colors
+    uniform sampler2D data;       // country color lookup table
+
+    varying vec2 vUv;
+
+    int color_to_country(vec3 rgb) {
+        int r = int(256.*rgb.r);
+        int g = int(256.*rgb.g);
+        int b = int(256.*rgb.b);
+        return r*256*256 + g*256 + b;
+    }
+
+    void main() {
+        vec4 country = texture2D(countries, vUv);
+        vec4 bg_texture = texture2D(texture, vUv);
+        if(country.r==0. && country.g==0. && country.b==0.) {
+            gl_FragColor = bg_texture;
+            return;
+        }
+        
+        int country_code = color_to_country(country.rgb);
+        
+        if(country_code==0) {
+            gl_FragColor = bg_texture;
+            return;
+        }
+
+        int row = int(country_code/64);
+        int col = int(mod(float(country_code), 64.));
+        vec2 dataUv = vec2(float(row)/64., float(col)/32.);
+        vec4 color_overlay = texture2D(data, dataUv);
+        gl_FragColor = color_overlay;
+    }
+</script>
+
+<script id="vertex-shader" type="x-shader/x-vertex">
+    // texture coordinate for vertex to be interpolated and passed into
+    // fragment shader per fragment
+    varying vec2 vUv;
+
+    void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1);
+    }
+</script>
+
 <script type="text/javascript">
 $(function(){
 var rainfall = []; // TODO
@@ -24,7 +72,7 @@ var rainfall = []; // TODO
 var textures = [
     "../img/earth-tex.png", 
     "../img/earth-night-tex.jpg",
-    "../img/earth-bump.jpg"
+    "../img/country-codes.png"
 ];
 var globe = d3.gl.globe()
     .latitude(function(d){return d.lat;})
