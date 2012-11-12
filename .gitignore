@@ -3,8 +3,10 @@
 *.pyc
 *.swp
 *.min.js
+*.psd
 ~*
 .DS_STORE
 webgl-globe
 README.html
 tools/jsmin
+kartograph

@@ -20,7 +20,8 @@ d3.gl.globe = function(){
     var texture = '../img/earth-tex.png';
     // callbacks. data => lat, lon, etc
     var fnLat, fnLon, fnTex;
-
+    // callbacks for choropleth map. data, country code => rgb color
+    var fnChoropleth;
     // PRIVATE VARS
     var zoom = 2.0, rotation = [0, 0]; // azith, angle
 	// constants
