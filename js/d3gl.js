@@ -31,7 +31,7 @@ d3.gl.globe = function(){
     var MOUSE_SENSITIVITY = [0.005, 0.005];
     var ZOOM_SENSITIVITY = 0.1; // (0 = no effect, 1 = infinite)
     var MIN_ZOOM = 0.5, MAX_ZOOM = 2;
-    var CHOROPLETH_TEX = "../img/country-codes.png";
+    var COUNTRY_CODE_TEX = "../img/country-codes.png";
 
     var choroplethUtils = {
         loadShaders: function(callback) {
@@ -43,40 +43,63 @@ d3.gl.globe = function(){
                 });
             });
         },
-        createDataTexture: function() {
-            var width = 1024;
-            var height = 1;
-            var size = width*height;
-            var data = new Uint8Array(size*3);
-            for(var i=0; i< size; i++) {
-                data[i*3] = Math.floor(Math.random()*255);
-                data[i*3+1] = Math.floor(Math.random()*255);
-                data[i*3+2] = Math.floor(Math.random()*255);
+        loadCountryCodeTexture: function(callback) {
+            var codes = new Image();
+            codes.onload = callback;
+            codes.src = COUNTRY_CODE_TEX;
+        },
+        countryCodeFromColor: function(r, g, b) {
+            return r*255*255 + g*255 + b;
+        },
+        colorOverlayFromCountryCode: function(code) {
+            if(code==840) return {r: 255, g: 0, b: 0};
+            return {r: 0, g: 0, b: 0};
+        },
+        createChoroplethTexture: function() {
+            // create hidden canvas element for image pixel manipulation
+            var canvas = document.createElement("canvas");
+            canvas.width = 2048;
+            canvas.height = 1024;
+
+            var context = canvas.getContext("2d"); 
+            context.drawImage(choroplethUtils.codes, 0, 0);
+            var pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+
+            for (var y=0; y<canvas.height; y++) {
+                for(var x=0; x<canvas.width; x++) {
+                    var r, g, b, a;
+                    var idx = (y*canvas.width + x)*4;
+
+                    r = pixels.data[idx];
+                    g = pixels.data[idx + 1];
+                    b = pixels.data[idx + 2];
+                    var countryCode = choroplethUtils.countryCodeFromColor(r, g, b);
+                    var colorOverlay = choroplethUtils.colorOverlayFromCountryCode(countryCode);
+                    pixels.data[idx] = colorOverlay.r;
+                    pixels.data[idx + 1] = colorOverlay.g;
+                    pixels.data[idx + 2] = colorOverlay.b;
+                }
             }
 
-            var texture = new THREE.DataTexture(data, width, height, THREE.RGBFormat);
+            context.putImageData(pixels, 0, 0);
+
+            var texture = new THREE.Texture(canvas);
             texture.needsUpdate = true;
             return texture;
         },
 
-        createMaterial: function(bgTexture, countryCodeTexture) {
-            var dataTexture = choroplethUtils.createDataTexture();
+        createMaterial: function(bgTexture) {
+            var choroplethTexture = choroplethUtils.createChoroplethTexture();
             var vertexShader = choroplethUtils.vs;
             var fragmentShader = choroplethUtils.fs;
-            //var vertexShader = $("#vertex-shader").html();
-            //var fragmentShader = $("#fragment-shader").html();
             var uniforms = {
                 texture: {
                     type: "t",
                     value: THREE.ImageUtils.loadTexture(bgTexture)
                 },
-                countries: {
+                choropleth: {
                     type: "t",
-                    value: THREE.ImageUtils.loadTexture(countryCodeTexture)
-                },
-                data: {
-                    type: "t",
-                    value: dataTexture
+                    value: choroplethTexture
                 }
             };
             var material = new THREE.ShaderMaterial({
@@ -109,7 +132,7 @@ d3.gl.globe = function(){
                 map: texture
             });
         } else {
-            sphereMaterial = choroplethUtils.createMaterial(tex, CHOROPLETH_TEX);
+            sphereMaterial = choroplethUtils.createMaterial(tex);
         }
 
         var radius = 1.0, segments = 80, rings = 40;
@@ -197,7 +220,12 @@ d3.gl.globe = function(){
                 render();
             }
 
-            choroplethUtils.loadShaders(start);
+            choroplethUtils.loadShaders(function() {
+                choroplethUtils.loadCountryCodeTexture(function(ev) {
+                    choroplethUtils.codes = ev.target;
+                    start();
+                });
+            });
         });
     }
     globe.width = function(val){
