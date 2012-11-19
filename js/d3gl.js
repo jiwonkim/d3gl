@@ -20,8 +20,11 @@ d3.gl.globe = function(){
     var texture = '../img/earth-tex.png';
     // callbacks. data => lat, lon, etc
     var fnLat, fnLon, fnTex;
-    // callbacks for choropleth map. data, country code => rgb color
+
+    //TODO: clean
     var fnChoropleth = true;
+    var fnCircles = false;
+
     // PRIVATE VARS
     var zoom = 2.0, rotation = [0, 0]; // azith, angle
 	// constants
@@ -32,6 +35,99 @@ d3.gl.globe = function(){
     var ZOOM_SENSITIVITY = 0.1; // (0 = no effect, 1 = infinite)
     var MIN_ZOOM = 0.5, MAX_ZOOM = 2;
     var COUNTRY_CODE_TEX = "../img/country-codes.png";
+
+    var circlesUtils = {
+        loadShaders: function(callback) {
+            $.get("../shaders/choropleth_fs.glsl", function(fs) {
+                $.get("../shaders/choropleth_vs.glsl", function(vs) {
+                    circlesUtils.fs = fs;
+                    circlesUtils.vs = vs;
+                    callback();
+                });
+            });
+        },
+        createCirclesTexture: function() {
+            // create hidden canvas element for image pixel manipulation
+            var canvas = document.createElement("canvas");
+            canvas.width = 4000;
+            canvas.height = 2000;
+            var context = canvas.getContext("2d"); 
+
+            // fake data
+            var data = [
+                {lat: 37.5833, lon: 127.0000, color: "#f00", radius: 10}, // seoul
+                {lat: 37.7750, lon: -122.4183, color: "#0f0", radius: 5}, // sf
+                {lat: 40.7142, lon: -74.0064, color: "#00f", radius: 20}, // ny
+                {lat: 31.2000, lon: 121.5000, color: "#ff0", radius: 15} // shanghai
+            ];
+
+            // fake color function
+            var colorfn = function(d) {
+                return d.color;
+            };
+
+            // fake radius function
+            var radiusfn = function(d) {
+                return d.radius;
+            };
+            
+            // fake lat lon functions
+            var latfn = function(d) {
+                return d.lat;
+            };
+
+            var lonfn = function(d) {
+                return d.lon;
+            };
+
+            for (var i=0; i<data.length; i++) {
+                var d = data[i];
+
+                var lat = latfn(d);
+                var lon = lonfn(d);
+                var color = colorfn(d);
+                var radius = radiusfn(d); // radius in pixels
+
+                //var radiusSquared = radius*radius;
+                var plat = canvas.height - Math.floor(canvas.height * (lat + 90)/180);
+                var plon = Math.floor(canvas.width * (lon + 180)/360);
+
+                context.beginPath();
+                context.arc(plon, plat, radius, 0, 2*Math.PI, false);
+                context.lineWidth = 3;
+                context.strokeStyle = '#fff';
+                context.stroke();
+                context.fillStyle = color;
+                context.fill();
+            }
+
+            var texture = new THREE.Texture(canvas);
+            texture.needsUpdate = true;
+            return texture;
+        },
+        createMaterial: function(bgTexture) {
+            var circlesTexture = circlesUtils.createCirclesTexture();
+            var vertexShader = circlesUtils.vs;
+            var fragmentShader = circlesUtils.fs;
+            var uniforms = {
+                texture: {
+                    type: "t",
+                    value: THREE.ImageUtils.loadTexture(bgTexture)
+                },
+                choropleth: {
+                    type: "t",
+                    value: circlesTexture
+                }
+            };
+            var material = new THREE.ShaderMaterial({
+                vertexShader: vertexShader,
+                fragmentShader: fragmentShader,
+                uniforms: uniforms,
+            });
+
+            return material;
+        },
+    };
 
     var choroplethUtils = {
         loadShaders: function(callback) {
@@ -125,14 +221,16 @@ d3.gl.globe = function(){
 
         // globe model
         var sphereMaterial;
-        if(!fnChoropleth) {
+        if(fnChoropleth) {
+            sphereMaterial = choroplethUtils.createMaterial(tex);
+        } else if(fnCircles) {
+            sphereMaterial = circlesUtils.createMaterial(tex);
+        } else {
             var texture = THREE.ImageUtils.loadTexture(tex);
             sphereMaterial = new THREE.MeshLambertMaterial({
                 color: 0xffffff,
                 map: texture
             });
-        } else {
-            sphereMaterial = choroplethUtils.createMaterial(tex);
         }
 
         var radius = 1.0, segments = 80, rings = 40;
@@ -200,6 +298,8 @@ d3.gl.globe = function(){
             console.log("Rendering. "+
                 "Dimensions: "+width+","+height+" "+
                 "Texture: "+texture);
+
+            circlesUtils.createCirclesTexture();
             
             function start() {
                 // 3js state
@@ -220,10 +320,12 @@ d3.gl.globe = function(){
                 render();
             }
 
-            choroplethUtils.loadShaders(function() {
-                choroplethUtils.loadCountryCodeTexture(function(ev) {
-                    choroplethUtils.codes = ev.target;
-                    start();
+            circlesUtils.loadShaders(function() {
+                choroplethUtils.loadShaders(function() {
+                    choroplethUtils.loadCountryCodeTexture(function(ev) {
+                        choroplethUtils.codes = ev.target;
+                        start();
+                    });
                 });
             });
         });
