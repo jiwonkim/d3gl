@@ -36,16 +36,40 @@ d3.gl.globe = function(){
     var MIN_ZOOM = 0.5, MAX_ZOOM = 2;
     var COUNTRY_CODE_TEX = "../img/country-codes.png";
 
-    var circlesUtils = {
+    var colorOverlayUtils = {
         loadShaders: function(callback) {
-            $.get("../shaders/choropleth_fs.glsl", function(fs) {
-                $.get("../shaders/choropleth_vs.glsl", function(vs) {
-                    circlesUtils.fs = fs;
-                    circlesUtils.vs = vs;
+            $.get("../shaders/color_overlay_fs.glsl", function(fs) {
+                $.get("../shaders/color_overlay_vs.glsl", function(vs) {
+                    overlayFs = fs;
+                    overlayVs = vs;
                     callback();
                 });
             });
         },
+        createMaterial: function(bgTexture, overlayTexture) {
+            var vertexShader = overlayVs;
+            var fragmentShader = overlayFs;
+            var uniforms = {
+                texture: {
+                    type: "t",
+                    value: THREE.ImageUtils.loadTexture(bgTexture)
+                },
+                overlay: {
+                    type: "t",
+                    value: overlayTexture
+                }
+            };
+            var material = new THREE.ShaderMaterial({
+                vertexShader: vertexShader,
+                fragmentShader: fragmentShader,
+                uniforms: uniforms,
+            });
+
+            return material;
+        },
+    };
+
+    var circlesUtils = {
         createCirclesTexture: function() {
             // create hidden canvas element for image pixel manipulation
             var canvas = document.createElement("canvas");
@@ -105,40 +129,9 @@ d3.gl.globe = function(){
             texture.needsUpdate = true;
             return texture;
         },
-        createMaterial: function(bgTexture) {
-            var circlesTexture = circlesUtils.createCirclesTexture();
-            var vertexShader = circlesUtils.vs;
-            var fragmentShader = circlesUtils.fs;
-            var uniforms = {
-                texture: {
-                    type: "t",
-                    value: THREE.ImageUtils.loadTexture(bgTexture)
-                },
-                choropleth: {
-                    type: "t",
-                    value: circlesTexture
-                }
-            };
-            var material = new THREE.ShaderMaterial({
-                vertexShader: vertexShader,
-                fragmentShader: fragmentShader,
-                uniforms: uniforms,
-            });
-
-            return material;
-        },
     };
 
     var choroplethUtils = {
-        loadShaders: function(callback) {
-            $.get("../shaders/choropleth_fs.glsl", function(fs) {
-                $.get("../shaders/choropleth_vs.glsl", function(vs) {
-                    choroplethUtils.fs = fs;
-                    choroplethUtils.vs = vs;
-                    callback();
-                });
-            });
-        },
         loadCountryCodeTexture: function(callback) {
             var codes = new Image();
             codes.onload = callback;
@@ -183,29 +176,6 @@ d3.gl.globe = function(){
             texture.needsUpdate = true;
             return texture;
         },
-
-        createMaterial: function(bgTexture) {
-            var choroplethTexture = choroplethUtils.createChoroplethTexture();
-            var vertexShader = choroplethUtils.vs;
-            var fragmentShader = choroplethUtils.fs;
-            var uniforms = {
-                texture: {
-                    type: "t",
-                    value: THREE.ImageUtils.loadTexture(bgTexture)
-                },
-                choropleth: {
-                    type: "t",
-                    value: choroplethTexture
-                }
-            };
-            var material = new THREE.ShaderMaterial({
-                vertexShader: vertexShader,
-                fragmentShader: fragmentShader,
-                uniforms: uniforms,
-            });
-
-            return material;
-        },
     }
 
     // sets up a ThreeJS globe
@@ -222,9 +192,15 @@ d3.gl.globe = function(){
         // globe model
         var sphereMaterial;
         if(fnChoropleth) {
-            sphereMaterial = choroplethUtils.createMaterial(tex);
+            sphereMaterial = colorOverlayUtils.createMaterial(
+                tex,
+                choroplethUtils.createChoroplethTexture()
+            );
         } else if(fnCircles) {
-            sphereMaterial = circlesUtils.createMaterial(tex);
+            sphereMaterial = colorOverlayUtils.createMaterial(
+                tex,
+                circlesUtils.createCirclesTexture()
+            );
         } else {
             var texture = THREE.ImageUtils.loadTexture(tex);
             sphereMaterial = new THREE.MeshLambertMaterial({
@@ -320,12 +296,10 @@ d3.gl.globe = function(){
                 render();
             }
 
-            circlesUtils.loadShaders(function() {
-                choroplethUtils.loadShaders(function() {
-                    choroplethUtils.loadCountryCodeTexture(function(ev) {
-                        choroplethUtils.codes = ev.target;
-                        start();
-                    });
+            colorOverlayUtils.loadShaders(function() {
+                choroplethUtils.loadCountryCodeTexture(function(ev) {
+                    choroplethUtils.codes = ev.target;
+                    start();
                 });
             });
         });
