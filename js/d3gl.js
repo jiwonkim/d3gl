@@ -214,7 +214,7 @@ d3.gl.globe = function(){
            new THREE.SphereGeometry(radius, segments, rings),
            sphereMaterial);
         scene.add(sphere);
-
+                
         // add a point light
         var pointLight = new THREE.PointLight( 0xFFFFFF );
         pointLight.position.x = 1;
@@ -232,12 +232,15 @@ d3.gl.globe = function(){
         gl.renderer = renderer;
         gl.scene = scene;
         gl.camera = camera;
+        gl.projector = new THREE.Projector();
     }
 
-    function initControls(elem){
+    function initControls(gl, elem){
         var dragStart;
         $(elem).mousedown(function(evt){
+            evt.preventDefault();
             dragStart = [evt.pageX, evt.pageY];
+            select(evt);
         }).mousemove(function(evt){
             if(!dragStart) return;
             update(evt);
@@ -251,6 +254,28 @@ d3.gl.globe = function(){
             zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
             evt.preventDefault();
         });
+
+        function select(evt) {
+            var vector = new THREE.Vector3(
+                (evt.offsetX / width)*2 - 1,
+                -(evt.offsetY / height)*2 + 1,
+                0.5
+            );
+
+            gl.projector.unprojectVector(vector, gl.camera);
+
+            var ray = new THREE.Ray(
+                gl.camera.position,
+                vector.subSelf(gl.camera.position).normalize()
+            );
+
+            var intersection = ray.intersectObjects([gl.mesh]);
+            if(intersection.length > 0) {
+                console.log("Intersects!");
+                console.log(intersection[0].point);
+            }
+        }
+
         function update(evt){
             rotation[1] += (evt.pageX - dragStart[0])*MOUSE_SENSITIVITY[0]*zoom;
             rotation[0] += (evt.pageY - dragStart[1])*MOUSE_SENSITIVITY[1]*zoom;
@@ -281,7 +306,7 @@ d3.gl.globe = function(){
                 // 3js state
                 var gl = {};
                 initGL(gl, texture);
-                initControls(gl.renderer.domElement);
+                initControls(gl, gl.renderer.domElement);
                 initStyle(gl.renderer.domElement);
                 element.appendChild(gl.renderer.domElement);
                 
