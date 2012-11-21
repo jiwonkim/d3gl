@@ -256,24 +256,38 @@ d3.gl.globe = function(){
         });
 
         function select(evt) {
+            // cast a ray through the mouse
             var vector = new THREE.Vector3(
                 (evt.offsetX / width)*2 - 1,
                 -(evt.offsetY / height)*2 + 1,
-                0.5
+                1.0
             );
-
             gl.projector.unprojectVector(vector, gl.camera);
-
             var ray = new THREE.Ray(
                 gl.camera.position,
                 vector.subSelf(gl.camera.position).normalize()
             );
 
-            var intersection = ray.intersectObjects([gl.mesh]);
-            if(intersection.length > 0) {
-                console.log("Intersects!");
-                console.log(intersection[0].point);
-            }
+            // ray-sphere intersection
+            //var C = new THREE.Vector3(); // pug
+            var a = ray.direction.dot(ray.direction);
+            var b = 2 * ray.origin.dot(ray.direction)
+            var c = ray.origin.dot(ray.origin) - 1;
+            var det = b*b - 4*a*c;
+            if(det < 0) return; // no intersection
+            var t = (-b - Math.sqrt(det))/(2*a);
+            var point = ray.direction.clone().multiplyScalar(t).addSelf(ray.origin);
+
+            // convert to lat/lon
+            var lat = Math.asin(point.y) + rotation[0];
+            var lon = Math.atan2(point.x, point.z) - rotation[1];
+            lat = 180/Math.PI*lat;
+            lon = 180/Math.PI*lon - 90;
+            while(lon < -180) lon += 360;
+            while(lon > 180) lon -= 360;
+            while(lat < -90) lat += 360;
+            while(lat > 270) lat -= 360;
+            if(lat > 90) lat = 90 - lat;
         }
 
         function update(evt){
