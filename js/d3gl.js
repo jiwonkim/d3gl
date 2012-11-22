@@ -25,6 +25,7 @@ d3.gl.globe = function(){
     // or which run after the globe itself to draw additional 3D elements (eg arcs)
     var overlayTex = []; 
     var overlay3D = [];
+    var gl = {};
 	// constants
 	var VIEW_ANGLE = 45,
 	    NEAR = 0.01,
@@ -154,6 +155,7 @@ d3.gl.globe = function(){
 
     // sets up a ThreeJS globe
     function initGL(gl, tex){
+        gl.meshes = [];
         var scene = new THREE.Scene();
 
         // camera
@@ -205,14 +207,15 @@ d3.gl.globe = function(){
         });
         renderer.setSize(width, height);
 
+        gl.meshes.push(sphere);
         gl.overlayCanvas = canvas;
         gl.overlayTexture = texture;
         gl.uniforms = sphereMaterial.uniforms;
-        gl.mesh = sphere;
         gl.renderer = renderer;
         gl.scene = scene;
         gl.camera = camera;
         gl.projector = new THREE.Projector();
+        gl.scene = scene;
     }
 
     function initControls(gl, elem){
@@ -299,11 +302,14 @@ d3.gl.globe = function(){
 
             function start() {
                 // 3js state
-                var gl = {};
                 initGL(gl, texture);
                 initControls(gl, gl.renderer.domElement);
                 initStyle(gl.renderer.domElement);
                 element.appendChild(gl.renderer.domElement);
+                
+                for(var i = 0; i < overlay3D.length; i++) {
+                    overlay3D[i](d);
+                }
                 
                 // called 60 times per second
                 function render(){
@@ -312,12 +318,12 @@ d3.gl.globe = function(){
                         overlayTex[i](gl.overlayCanvas, d);
                     }
                     gl.overlayTexture.needsUpdate = true;
-
-                    // overlay3D?
-
+                    
                     // draw the globe
-                    gl.mesh.rotation.x = rotation[0];
-                    gl.mesh.rotation.y = rotation[1];
+                    for(var i = 0; i < gl.meshes.length; i++) {
+                        gl.meshes[i].rotation.x = rotation[0];
+                        gl.meshes[i].rotation.y = rotation[1];
+                    }
                     gl.camera.position.z = 1+zoom;
                     gl.renderer.render(gl.scene, gl.camera);
                     requestAnimationFrame(render);
@@ -458,6 +464,77 @@ d3.gl.globe = function(){
 
         overlayTex.push(points);
         return points;
+    };
+
+    globe.bars = function() {
+        var fnLat, fnLon, fnColor, fnHeight, fnData;
+        function bars(datum){
+            console.log("wat");
+            // render the points into a texture that goes on the globe
+            var array = fnData(datum);
+            var linesGeo = new THREE.Geometry();
+            array.forEach(function(elem){
+                var lat = Math.PI/180*fnLat(elem);
+                var lon = Math.PI/180*fnLon(elem);
+                var color = fnColor(elem);
+                var height = fnHeight(elem); // in units of globe radius
+                var r = height > 1 ? 2 : 1 + height;
+                var x, y, z;
+                x = r*Math.cos(lat)*Math.cos(lon);
+                y = r*Math.cos(lat)*Math.sin(lon);
+                z = r*Math.sin(lat);
+
+                linesGeo.vertices.push(
+                    new THREE.Vector3(0, 0, 0),
+                    new THREE.Vector3(x,y,z)
+                );
+            });
+            
+            var lineMaterial = new THREE.LineBasicMaterial({
+                color: "#000",
+                lineWidth: 1
+            });
+            var line = new THREE.Line(linesGeo, lineMaterial);
+            line.type = THREE.Lines;
+            gl.scene.add(line);
+            gl.meshes.push(line);
+
+            return bars;
+        }
+
+        bars.latitude = function(val){
+            if(arguments.length == 0) return fnLat;
+            if(typeof val == "function") fnLat = val;
+            else fnLat = function(){return val;};
+            return bars;
+        }
+        bars.longitude = function(val){
+            if(arguments.length == 0) return fnLon;
+            if(typeof val == "function") fnLon = val;
+            else fnLon = function(){return val;};
+            return bars;
+        }
+        bars.color = function(val){
+            if(arguments.length == 0) return fnColor;
+            if(typeof val == "function") fnColor = val;
+            else fnColor = function(){return val;};
+            return bars;
+        }
+        bars.height = function(val){
+            if(arguments.length == 0) return fnHeight;
+            if(typeof val == "function") fnHeight = val;
+            else fnHeight = function(){return val;};
+            return bars;
+        }
+        bars.data = function(val){
+            if(arguments.length == 0) return fnData;
+            if(typeof val == "function") fnData = val;
+            else fnData = function(){return val;};
+            return bars;
+        }
+
+        overlay3D.push(bars);
+        return bars;
     };
     
     /*

@@ -19,10 +19,10 @@
 <script type="text/javascript">
 // fake data
 var data = [
-    {lat: 37.5833, lon: 127.0000, color: "#f00", radius: 10}, // seoul
-    {lat: 37.7750, lon: -122.4183, color: "#0f0", radius: 5}, // sf
-    {lat: 40.7142, lon: -74.0064, color: "#00f", radius: 20}, // ny
-    {lat: 31.2000, lon: 121.5000, color: "#ff0", radius: 15} // shanghai
+    {lat: 37.5833, lon: 127.0000, color: "#f00", radius: 10, height: 0.5}, // seoul
+    {lat: 37.7750, lon: -122.4183, color: "#0f0", radius: 5, height: 0.2}, // sf
+    {lat: 40.7142, lon: -74.0064, color: "#00f", radius: 20, height: 0.4}, // ny
+    {lat: 31.2000, lon: 121.5000, color: "#ff0", radius: 15, height: 1.0} // shanghai
 ];
 
 $(function(){
@@ -30,6 +30,14 @@ $(function(){
         .width(600).height(600)
         .texture("../img/earth-blank.png");
     var selectedCity = null;
+    var shapes = globe.bars()
+        .data(data)
+        .latitude(function(d){ return d.lat; })
+        .longitude(function(d){ return d.lon; })
+        .height(function(d){ return d.height; })
+        .color(function(d){ return d==selectedCity ? "#fff" : d.color; });
+        
+    /*
     var shapes = globe.points()
         .data(data)
         .latitude(function(d){ return d.lat; })
@@ -39,6 +47,7 @@ $(function(){
         //.on('click', function(d){ 
         //    selectedCity = d;
         //});
+    */
 
     var painter = globe.paint(function(canvas, datum){
         var context = canvas.getContext("2d");
