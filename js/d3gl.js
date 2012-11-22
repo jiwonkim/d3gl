@@ -42,8 +42,6 @@ d3.gl.globe = function(){
                 $.get("../shaders/color_overlay_vs.glsl", function(vs) {
                     overlayFs = fs;
                     overlayVs = vs;
-                    console.log(fs);
-                    console.log(vs);
                     callback();
                 });
             });
@@ -62,7 +60,6 @@ d3.gl.globe = function(){
                 },
             };
             $.extend(true, uniforms, additionalUniforms);
-            console.log(uniforms);
             var material = new THREE.ShaderMaterial({
                 vertexShader: vertexShader,
                 fragmentShader: fragmentShader,
@@ -138,7 +135,6 @@ d3.gl.globe = function(){
                 this.createCirclesTexture(),
                 {}
             );
-            this.uniforms = material.uniforms;
             return material;
         },
     };
@@ -156,7 +152,7 @@ d3.gl.globe = function(){
             if(code==840) return {r: 255, g: 0, b: 0};
             return {r: 0, g: 0, b: 0};
         },
-        highlightCountryAt: function(lat, lon) {
+        highlightCountryAt: function(gl, lat, lon) {
             var x, y;
             x = Math.floor(this.codes.width * (lon + 180)/360);
             y = this.codes.height - 
@@ -169,9 +165,7 @@ d3.gl.globe = function(){
             b = this.codesImageData.data[idx + 2];
 
             var countryCode = this.countryCodeFromColor(r, g, b);
-            this.uniforms.country.value = countryCode;
-            console.log("highlighting "+countryCode);
-            console.log("color: ("+r+","+g+","+b+")");
+            gl.uniforms.country.value = countryCode;
         },
         storeCountryCodesImageData: function(context, pixels) {
             context.putImageData(pixels, 0, 0);
@@ -226,7 +220,6 @@ d3.gl.globe = function(){
                     },
                 }
             );
-            this.uniforms = material.uniforms;
             return material;
         },
     }
@@ -246,8 +239,10 @@ d3.gl.globe = function(){
         var sphereMaterial;
         if(fnChoropleth) {
             sphereMaterial = choroplethUtils.createMaterial(tex);
+            gl.uniforms = sphereMaterial.uniforms;
         } else if(fnCircles) {
             sphereMaterial = circlesUtils.createMaterial(tex);
+            gl.uniforms = sphereMaterial.uniforms;
         } else {
             var texture = THREE.ImageUtils.loadTexture(tex);
             sphereMaterial = new THREE.MeshLambertMaterial({
@@ -305,7 +300,7 @@ d3.gl.globe = function(){
         function select(evt) {
             // currently, only support selection for choropleth mode
             if(!fnChoropleth) return;
-
+            
             // cast a ray through the mouse
             var vector = new THREE.Vector3(
                 (evt.offsetX / width)*2 - 1,
@@ -338,7 +333,7 @@ d3.gl.globe = function(){
             while(lat > 270) lat -= 360;
             if(lat > 90) lat = 90 - lat;
             
-            choroplethUtils.highlightCountryAt(lat, lon);
+            choroplethUtils.highlightCountryAt(gl, lat, lon);
         }
 
         function update(evt){
