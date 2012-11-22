@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>D3GL Space</title>
+    <link rel="stylesheet" href="../css/demo.css" />
+</head>
+<body>
+
+<h1>D3GL Space</h1>
+<script type="text/javascript" src="../js/jquery-1.8.2.js"></script>
+<script type="text/javascript" src="../js/jquery.mousewheel.js"></script>
+<script type="text/javascript" src="../js/d3.v2.js"></script>
+<script type="text/javascript" src="../js/RequestAnimationFrame.js"></script>
+<script type="text/javascript" src="../js/three.js"></script>
+<script type="text/javascript" src="../js/d3gl.js"></script>
+<!-- All scripts above are included here:
+<script type="text/javascript" src="../js/d3gl.min.js"></script> -->
+
+<script type="text/javascript">
+// fake data
+var data = [
+    {lat: 37.5833, lon: 127.0000, color: "#f00", radius: 10}, // seoul
+    {lat: 37.7750, lon: -122.4183, color: "#0f0", radius: 5}, // sf
+    {lat: 40.7142, lon: -74.0064, color: "#00f", radius: 20}, // ny
+    {lat: 31.2000, lon: 121.5000, color: "#ff0", radius: 15} // shanghai
+];
+
+$(function(){
+    var globe = d3.gl.globe()
+        .width(600).height(600)
+        .texture("../img/earth-blank.png");
+    var selectedCity = null;
+    var shapes = globe.points()
+        .data(data)
+        .latitude(function(d){ return d.lat; })
+        .longitude(function(d){ return d.lon; })
+        .radius(function(d){ return d.radius; })
+        .color(function(d){ return d==selectedCity ? "#fff" : d.color; });
+        //.on('click', function(d){ 
+        //    selectedCity = d;
+        //});
+
+    var painter = globe.paint(function(canvas, datum){
+        var context = canvas.getContext("2d");
+        context.beginPath();
+        var latScale = d3.scale.linear()
+            .domain([-90,90]).range([canvas.height,0]);
+        var lonScale = d3.scale.linear()
+            .domain([-180,180]).range([0,canvas.width]);
+        data.forEach(function(city){
+            context.lineTo(lonScale(city.lon), latScale(city.lat));
+        });
+        context.lineWidth = 20;
+        context.strokeStyle= "#f00";
+        context.stroke();
+    });
+    d3.select("body").append("span")
+        .datum(data).call(globe);
+});
+
+</script>
+</body>
+</html>

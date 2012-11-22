@@ -16,17 +16,15 @@ d3.gl.globe = function(){
     // viewport dimensions, in pixels
     var width = 400;
     var height = 400;
-    // texture name
-    var texture = '../img/earth-tex.png';
-    // callbacks. data => lat, lon, etc
-    var fnLat, fnLon, fnTex;
-
-    //TODO: clean
-    var fnChoropleth = true;
-    var fnCircles = false;
+    // callbacks (globe-level. see shapes(), points(), etc)
+    var fnTex;
 
     // PRIVATE VARS
     var zoom = 2.0, rotation = [0, 0]; // azith, angle
+    // overlays. these are functions that either render onto the globe tex (eg colored countries),
+    // or which run after the globe itself to draw additional 3D elements (eg arcs)
+    var overlayTex = []; 
+    var overlay3D = [];
 	// constants
 	var VIEW_ANGLE = 45,
 	    NEAR = 0.01,
@@ -38,12 +36,14 @@ d3.gl.globe = function(){
 
     var colorOverlayUtils = {
         loadShaders: function(callback) {
+            var loaded = 0;
             $.get("../shaders/color_overlay_fs.glsl", function(fs) {
-                $.get("../shaders/color_overlay_vs.glsl", function(vs) {
-                    overlayFs = fs;
-                    overlayVs = vs;
-                    callback();
-                });
+                overlayFs = fs;
+                if(++loaded == 2) callback();
+            });
+            $.get("../shaders/color_overlay_vs.glsl", function(vs) {
+                overlayVs = vs;
+                if(++loaded == 2) callback();
             });
         },
         createMaterial: function(bgTexture, overlayTexture, additionalUniforms) {
@@ -65,80 +65,9 @@ d3.gl.globe = function(){
                 fragmentShader: fragmentShader,
                 uniforms: uniforms,
             });
-
             return material;
         },
     };
-
-    var circlesUtils = {
-        createCirclesTexture: function() {
-            // create hidden canvas element for image pixel manipulation
-            var canvas = document.createElement("canvas");
-            canvas.width = 4000;
-            canvas.height = 2000;
-            var context = canvas.getContext("2d"); 
-
-            // fake data
-            var data = [
-                {lat: 37.5833, lon: 127.0000, color: "#f00", radius: 10}, // seoul
-                {lat: 37.7750, lon: -122.4183, color: "#0f0", radius: 5}, // sf
-                {lat: 40.7142, lon: -74.0064, color: "#00f", radius: 20}, // ny
-                {lat: 31.2000, lon: 121.5000, color: "#ff0", radius: 15} // shanghai
-            ];
-
-            // fake color function
-            var colorfn = function(d) {
-                return d.color;
-            };
-
-            // fake radius function
-            var radiusfn = function(d) {
-                return d.radius;
-            };
-            
-            // fake lat lon functions
-            var latfn = function(d) {
-                return d.lat;
-            };
-
-            var lonfn = function(d) {
-                return d.lon;
-            };
-
-            for (var i=0; i<data.length; i++) {
-                var d = data[i];
-
-                var lat = latfn(d);
-                var lon = lonfn(d);
-                var color = colorfn(d);
-                var radius = radiusfn(d); // radius in pixels
-
-                var plat = canvas.height - Math.floor(canvas.height * (lat + 90)/180);
-                var plon = Math.floor(canvas.width * (lon + 180)/360);
-
-                context.beginPath();
-                context.arc(plon, plat, radius, 0, 2*Math.PI, false);
-                context.lineWidth = 3;
-                context.strokeStyle = '#fff';
-                context.stroke();
-                context.fillStyle = color;
-                context.fill();
-            }
-
-            var texture = new THREE.Texture(canvas);
-            texture.needsUpdate = true;
-            return texture;
-        },
-        createMaterial: function(tex) {
-            var material = colorOverlayUtils.createMaterial(
-                tex,
-                this.createCirclesTexture(),
-                {}
-            );
-            return material;
-        },
-    };
-
     var choroplethUtils = {
         loadCountryCodeTexture: function(callback) {
             var codes = new Image();
@@ -182,7 +111,6 @@ d3.gl.globe = function(){
             context.drawImage(this.codes, 0, 0);
             var pixels = context.getImageData(0, 0, canvas.width, canvas.height);
             this.storeCountryCodesImageData(context, pixels);
-
             for (var y=0; y<canvas.height; y++) {
                 for(var x=0; x<canvas.width; x++) {
                     var r, g, b, a;
@@ -198,9 +126,9 @@ d3.gl.globe = function(){
                     pixels.data[idx + 2] = colorOverlay.b;
                 }
             }
-
             context.putImageData(pixels, 0, 0);
 
+            // turn it into a texture
             var texture = new THREE.Texture(canvas);
             texture.needsUpdate = true;
             return texture;
@@ -235,22 +163,29 @@ d3.gl.globe = function(){
         camera.position.z = 2;
         scene.add(camera);
 
-        // globe model
-        var sphereMaterial;
-        if(fnChoropleth) {
-            sphereMaterial = choroplethUtils.createMaterial(tex);
-            gl.uniforms = sphereMaterial.uniforms;
-        } else if(fnCircles) {
-            sphereMaterial = circlesUtils.createMaterial(tex);
-            gl.uniforms = sphereMaterial.uniforms;
-        } else {
-            var texture = THREE.ImageUtils.loadTexture(tex);
-            sphereMaterial = new THREE.MeshLambertMaterial({
-                color: 0xffffff,
-                map: texture
-            });
-        }
+        // globe model. rendering steps:
+        // 1. render the base texture
+        // 2. add any shape overlays using the shaders
+        // 3. add additional overlays from an offscreen canvas (arbitrary d3)
 
+        // create hidden canvas element for texture manipulation
+        var canvas = document.createElement("canvas");
+        canvas.width = 4000;
+        canvas.height = 2000;
+        var texture = new THREE.Texture(canvas);
+        sphereMaterial = colorOverlayUtils.createMaterial(tex, texture);
+
+        // map view:
+        //    sphereMaterial = choroplethUtils.createMaterial(tex);
+        //    gl.uniforms = sphereMaterial.uniforms;
+        // plain view:
+        //    var texture = THREE.ImageUtils.loadTexture(tex);
+        //    sphereMaterial = new THREE.MeshLambertMaterial({
+        //        color: 0xffffff,
+        //        map: texture
+        //    });
+
+        // create the actual globe
         var radius = 1.0, segments = 80, rings = 40;
         var sphere = new THREE.Mesh(
            new THREE.SphereGeometry(radius, segments, rings),
@@ -270,6 +205,9 @@ d3.gl.globe = function(){
         });
         renderer.setSize(width, height);
 
+        gl.overlayCanvas = canvas;
+        gl.overlayTexture = texture;
+        gl.uniforms = sphereMaterial.uniforms;
         gl.mesh = sphere;
         gl.renderer = renderer;
         gl.scene = scene;
@@ -298,8 +236,7 @@ d3.gl.globe = function(){
         });
 
         function select(evt) {
-            // currently, only support selection for choropleth mode
-            if(!fnChoropleth) return;
+            return;
             
             // cast a ray through the mouse
             var vector = new THREE.Vector3(
@@ -370,6 +307,15 @@ d3.gl.globe = function(){
                 
                 // called 60 times per second
                 function render(){
+                    // draw the texture
+                    for(var i = 0; i < overlayTex.length; i++){
+                        overlayTex[i](gl.overlayCanvas, d);
+                    }
+                    gl.overlayTexture.needsUpdate = true;
+
+                    // overlay3D?
+
+                    // draw the globe
                     gl.mesh.rotation.x = rotation[0];
                     gl.mesh.rotation.y = rotation[1];
                     gl.camera.position.z = 1+zoom;
@@ -415,5 +361,113 @@ d3.gl.globe = function(){
         else fnTex = function(){return val;}
         return globe;
     }
+
+
+    /* Supported overlays:
+     * * .shapes() -- color in shapes, such as countries
+     * * .arcs() -- display arcs connecting points on the globe
+     * * .points() -- display points, such as cities
+     */
+    globe.shapes = function(shapeObj){
+        /*if(!shapeObj || !shapeObj.ids || !shapeObj.texture){
+            throw "globe.shapes() called with an invalid argument. see docs.";
+        }*/
+
+        // shape arguments
+        var data = []; // array or function returning array
+        var color = "#ff0000"; // color or function
+
+        function shapes(){
+            // render shape overlay
+        }
+        shapes.data = function(val){
+            if(!arguments.length) return data;
+            data = val;
+            return shapes;
+        }
+        shapes.color = function(val){
+            if(!arguments.length) return color;
+            color = val;
+            return shapes;
+        }
+        overlays.push(shapes);
+        return shapes;
+    }
+
+    /* globe.points
+     * * lat
+     * * lon
+     * * color
+     * * radius 
+     */
+    globe.points = function(){
+        var fnLat, fnLon, fnColor, fnRadius, fnData;
+        function points(canvas, datum){
+            // render the points into a texture that goes on the globe
+            var context = canvas.getContext("2d"); 
+            var array = fnData(datum);
+            array.forEach(function(elem){
+                var lat = fnLat(elem);
+                var lon = fnLon(elem);
+                var color = fnColor(elem);
+                var radius = fnRadius(elem); // radius in degrees
+                var radiusPx = radius * canvas.width / 360.0;
+                var plat = canvas.height - Math.floor(canvas.height * (lat + 90)/180);
+                var plon = Math.floor(canvas.width * (lon + 180)/360);
+
+                context.beginPath();
+                context.arc(plon, plat, radiusPx, 0, 2*Math.PI, false);
+                context.lineWidth = 3;
+                context.fillStyle = color;
+                context.fill();
+                context.strokeStyle = '#fff';
+                context.stroke();
+            });
+        }
+
+        points.latitude = function(val){
+            if(arguments.length == 0) return fnLat;
+            if(typeof val == "function") fnLat = val;
+            else fnLat = function(){return val;};
+            return points;
+        }
+        points.longitude = function(val){
+            if(arguments.length == 0) return fnLon;
+            if(typeof val == "function") fnLon = val;
+            else fnLon = function(){return val;};
+            return points;
+        }
+        points.color = function(val){
+            if(arguments.length == 0) return fnColor;
+            if(typeof val == "function") fnColor = val;
+            else fnColor = function(){return val;};
+            return points;
+        }
+        points.radius = function(val){
+            if(arguments.length == 0) return fnRadius;
+            if(typeof val == "function") fnRadius = val;
+            else fnRadius = function(){return val;};
+            return points;
+        }
+        points.data = function(val){
+            if(arguments.length == 0) return fnLon;
+            if(typeof val == "function") fnLon = val;
+            else fnData = function(){return val;};
+            return points;
+        }
+
+        overlayTex.push(points);
+        return points;
+    }
+
+    
+    /*
+     * Free-form painting onto the globe texture.
+     */
+    globe.paint = function(painter){
+        overlayTex.push(painter);
+        return globe;
+    }
+
     return globe;
 };
