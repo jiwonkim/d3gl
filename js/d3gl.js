@@ -450,16 +450,15 @@ d3.gl.globe = function(){
             return points;
         }
         points.data = function(val){
-            if(arguments.length == 0) return fnLon;
-            if(typeof val == "function") fnLon = val;
+            if(arguments.length == 0) return fnData;
+            if(typeof val == "function") fnData = val;
             else fnData = function(){return val;};
             return points;
         }
 
         overlayTex.push(points);
         return points;
-    }
-
+    };
     
     /*
      * Free-form painting onto the globe texture.
