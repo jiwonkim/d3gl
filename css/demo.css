@@ -6,3 +6,20 @@ h1 {
 margin:10px;
 }
 
+/* picker goes on the left */
+#picker {
+float:left;
+width:300px;
+cursor:pointer;
+list-style-type:none;
+padding:0;
+}
+#picker li {
+margin:1px;
+padding:10px;
+background:#ddd;       
+}
+#picker li.selected {
+background:#aef;
+}
+

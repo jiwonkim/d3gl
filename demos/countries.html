@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>D3GL Earth</title>
+    <link rel="stylesheet" href="../css/demo.css" />
+</head>
+<body>
+
+<h1>Countries</h1>
+<ul id="picker">
+</ul>
+
+<script type="text/javascript" src="../js/jquery-1.8.2.js"></script>
+<script type="text/javascript" src="../js/jquery.mousewheel.js"></script>
+<script type="text/javascript" src="../js/d3.v2.js"></script>
+<script type="text/javascript" src="../js/RequestAnimationFrame.js"></script>
+<script type="text/javascript" src="../js/three.js"></script>
+<script type="text/javascript" src="../js/d3gl.js"></script>
+<!-- All scripts above are included here:
+<script type="text/javascript" src="../js/d3gl.min.js"></script> -->
+
+<script type="text/javascript">
+
+var query = {};
+var indicators = ["GDP per capita", "Population", "GDP", "Population density"];
+function createControls(){
+    var selected;
+    d3.select("#picker").selectAll("li")
+        .data(Object.keys(indicators))
+        .enter().append("li")
+            .text(function(d){ return indicators[d]; })
+            .on('click', function(d) { 
+                console.log(d); 
+                if(selected) $(selected).removeClass("selected");
+                $(selected = this).addClass("selected");
+                query.variable = d;
+            });
+}
+
+$(function(){
+    // create the ui
+    createControls();
+
+    // the world bank has an awesome api
+    // see http://data.worldbank.org/        
+    d3.csv("/data/worldbank_2010.csv", function(data){
+        console.log(data);
+        // create the globe
+        var globe = d3.gl.globe()
+            .width(600).height(600)
+            .texture("../img/earth-blank.png");
+        var shapes = globe.shapes(d3.gl.countries)
+            .data(data, function(d){ return d["Country code"]; })
+            .color(function(countryCode){
+                return countryCode=="USA" ? "#ff0000" : "#00ff00";
+            });
+        d3.select("body").append("span")
+            .datum(data).call(globe);
+    });
+});
+
+
+function loadCountryData(indicators, callback){
+    // sample url 
+    var urls = indicators.map(function(i) {
+        return "http://api.worldbank.org/countries/all/indicators/"
+            + i + "?date=2010&format=csv&per_page=500";
+    });
+    // ? d3.gl.loadAll(urls, function(data){...});
+    var countries = {};
+    var nloaded = 0;
+    for(var i = 0; i < urls.length; i++){
+        d3.csv(urls[i], function(data){
+            for(var j = 0; j < data.length; j++){
+                var id = data["Country Code"];
+                if(!countries[id]) countries[id] = 
+                    {"id":id,"name":data["Country Name"]};
+                countries[id][indicators[i]] = data["2010"];
+            }
+            if(++nloaded == indicators.length){
+                callback(countries);
+            }
+        });
+    }
+}
+
+</script>
+</body>
+</html>
