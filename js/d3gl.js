@@ -468,11 +468,18 @@ d3.gl.globe = function(){
 
     globe.bars = function() {
         var fnLat, fnLon, fnColor, fnHeight, fnData;
+        var barsFs, barsVs;
         function bars(datum){
             console.log("wat");
             // render the points into a texture that goes on the globe
             var array = fnData(datum);
             var linesGeo = new THREE.Geometry();
+            var attributes = {
+                customColor: {
+                    type: "c",
+                    value: []
+                }
+            };
             array.forEach(function(elem){
                 var lat = Math.PI/180*fnLat(elem);
                 var lon = Math.PI/180*(fnLon(elem) + 90);
@@ -488,16 +495,38 @@ d3.gl.globe = function(){
                     new THREE.Vector3(0, 0, 0),
                     new THREE.Vector3(x,y,z)
                 );
+
+                var hex = "0x" + color.slice(1);
+                attributes.customColor.value.push(new THREE.Color(hex))
+                attributes.customColor.value.push(new THREE.Color(hex));
             });
+
+            loadShaders(addBars);
             
-            var lineMaterial = new THREE.LineBasicMaterial({
-                color: "#000",
-                lineWidth: 1
-            });
-            var line = new THREE.Line(linesGeo, lineMaterial);
-            line.type = THREE.Lines;
-            gl.scene.add(line);
-            gl.meshes.push(line);
+            function loadShaders(callback) {
+                var loaded = 0;
+                $.get("../shaders/bars_fs.glsl", function(fs) {
+                    barsFs = fs;
+                    if(++loaded == 2) callback();
+                });
+                $.get("../shaders/bars_vs.glsl", function(vs) {
+                    barsVs = vs;
+                    if(++loaded == 2) callback();
+                });
+            }
+            
+            function addBars() {
+                var lineMaterial = new THREE.ShaderMaterial({
+                    vertexShader: barsVs,
+                    fragmentShader: barsFs,
+                    attributes: attributes,
+                });
+
+                var line = new THREE.Line(linesGeo, lineMaterial);
+                line.type = THREE.Lines;
+                gl.scene.add(line);
+                gl.meshes.push(line);
+            }
 
             return bars;
         }
