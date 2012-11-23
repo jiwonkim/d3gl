@@ -314,6 +314,7 @@ d3.gl.globe = function(){
                 // called 60 times per second
                 function render(){
                     // draw the texture
+                    gl.overlayCanvas.width = gl.overlayCanvas.width;
                     for(var i = 0; i < overlayTex.length; i++){
                         overlayTex[i](gl.overlayCanvas, d);
                     }
@@ -408,6 +409,15 @@ d3.gl.globe = function(){
      */
     globe.points = function(){
         var fnLat, fnLon, fnColor, fnRadius, fnData;
+        function drawCircle(context, plat, plon, pradius, color){
+            context.beginPath();
+            context.arc(plon, plat, pradius, 0, 2*Math.PI, false);
+            context.lineWidth = 3;
+            context.fillStyle = color;
+            context.fill();
+            context.strokeStyle = '#fff';
+            context.stroke();
+        }
         function points(canvas, datum){
             // render the points into a texture that goes on the globe
             var context = canvas.getContext("2d"); 
@@ -415,19 +425,29 @@ d3.gl.globe = function(){
             array.forEach(function(elem){
                 var lat = fnLat(elem);
                 var lon = fnLon(elem);
+                if(lat < -90 || lat > 90 || lon < -180 || lon > 180){
+                    throw "invalid lat/lon: "+lat+","+lon;
+                }
                 var color = fnColor(elem);
                 var radius = fnRadius(elem); // radius in degrees
-                var radiusPx = radius * canvas.width / 360.0;
-                var plat = canvas.height - Math.floor(canvas.height * (lat + 90)/180);
-                var plon = Math.floor(canvas.width * (lon + 180)/360);
+                if(radius <= 0) return;
+                var pradius = radius * canvas.width / 360.0;
+                var plat = canvas.height * (1-(lat + 90)/180);
+                var plon = canvas.width * (lon + 180)/360;
 
-                context.beginPath();
-                context.arc(plon, plat, radiusPx, 0, 2*Math.PI, false);
-                context.lineWidth = 3;
-                context.fillStyle = color;
-                context.fill();
-                context.strokeStyle = '#fff';
-                context.stroke();
+                // scale to mitigate projection distortion
+                var xscale = 1 / (Math.cos(lat*Math.PI/180) + 0.01);
+                plon /= xscale;
+                context.save();
+                context.scale(xscale, 1.0);
+                // draw it twice if on the the int'l date line to avoid clipping
+                if(plon < pradius){
+                    drawCircle(context, plat, plon + canvas.width/xscale, pradius, color);
+                } else if(plon > canvas.width/xscale-pradius){
+                    drawCircle(context, plat, plon - canvas.width/xscale, pradius, color);
+                }
+                drawCircle(context, plat, plon, pradius, color);
+                context.restore();
             });
         }
 
