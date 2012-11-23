@@ -4,7 +4,6 @@
 
 // See README.md for examples.
 
-
 // check prerequisites 
 if(!d3 || !jQuery || !THREE || !requestAnimationFrame){
     throw "D3GL requires D3, JQuery, ThreeJS, and RequestAnimationFrame";
@@ -18,6 +17,14 @@ d3.gl.globe = function(){
     var height = 400;
     // callbacks (globe-level. see shapes(), points(), etc)
     var fnTex;
+    // event handlers
+    var eventHandlers = {
+        'mousedown':[],
+        'mousemove':[],
+        'mouseup':[],
+        'click':[],
+        'dblclick':[]
+    };
 
     // PRIVATE VARS
     var zoom = 2.0, rotation = [0, 0]; // azith, angle
@@ -218,65 +225,84 @@ d3.gl.globe = function(){
         gl.scene = scene;
     }
 
+    /**
+     * Turns a mouse event into a [lat, lon] pair,
+     * or returns null if the mouse isn't over the globe.
+     */
+    function intersect(gl, evt) {
+        // cast a ray through the mouse
+        var vector = new THREE.Vector3(
+            (evt.offsetX / width)*2 - 1,
+            -(evt.offsetY / height)*2 + 1,
+            1.0
+        );
+        gl.projector.unprojectVector(vector, gl.camera);
+        var ray = new THREE.Ray(
+            gl.camera.position,
+            vector.subSelf(gl.camera.position).normalize()
+        );
+
+        // ray-sphere intersection for unit sphere centered at (0, 0, 0)
+        var a = ray.direction.dot(ray.direction);
+        var b = 2 * ray.origin.dot(ray.direction)
+        var c = ray.origin.dot(ray.origin) - 1;
+        var det = b*b - 4*a*c;
+        if(det < 0) return null; // no intersection
+        var t = (-b - Math.sqrt(det))/(2*a);
+        var point = ray.direction.clone().multiplyScalar(t).addSelf(ray.origin);
+
+        // convert to lat/lon
+        var lat = Math.asin(point.y) + rotation[0];
+        var lon = Math.atan2(point.x, point.z) - rotation[1];
+        lat = 180/Math.PI*lat;
+        lon = 180/Math.PI*lon - 90;
+        while(lon < -180) lon += 360;
+        while(lon > 180) lon -= 360;
+        while(lat < -90) lat += 360;
+        while(lat > 270) lat -= 360;
+        if(lat > 90) lat = 90 - lat;
+        return [lat, lon];
+    }
+
+    function fireMouseEvent(name, gl, evt){
+        var handlers = eventHandlers[name];
+        if (handlers.length == 0) return;
+        evt.latlon = intersect(gl, evt);
+        evt.datum = gl.datum;
+        for(var i = 0; i < handlers.length; i++){
+            handlers[i](evt);
+        }
+    }
+
     function initControls(gl, elem){
         var dragStart;
+        var latlon = null;
         $(elem).mousedown(function(evt){
+            fireMouseEvent("mousedown", gl, evt);
             evt.preventDefault();
             dragStart = [evt.pageX, evt.pageY];
-            select(evt);
         }).mousemove(function(evt){
+            fireMouseEvent("mousemove", gl, evt);
             if(!dragStart) return;
-            update(evt);
-            dragStart = [evt.pageX, evt.pageY];
+            dragUpdate(evt);
+            dragStart = [evt.pageX, evt.pageY]; 
         }).mouseup(function(evt){
+            fireMouseEvent("mouseup", gl, evt);
             if(!dragStart) return;
-            update(evt);
+            dragUpdate(evt);
             dragStart = null;
+        }).click(function(evt){
+            fireMouseEvent("click", gl, evt);
+        }).dblclick(function(evt){
+            fireMouseEvent("dblclick", gl, evt);
         }).mousewheel(function(evt, delta, dx, dy){
             zoom *= Math.pow(1-ZOOM_SENSITIVITY, dy);
             zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
             evt.preventDefault();
         });
 
-        function select(evt) {
-            return;
-            
-            // cast a ray through the mouse
-            var vector = new THREE.Vector3(
-                (evt.offsetX / width)*2 - 1,
-                -(evt.offsetY / height)*2 + 1,
-                1.0
-            );
-            gl.projector.unprojectVector(vector, gl.camera);
-            var ray = new THREE.Ray(
-                gl.camera.position,
-                vector.subSelf(gl.camera.position).normalize()
-            );
 
-            // ray-sphere intersection for unit sphere centered at (0, 0, 0)
-            var a = ray.direction.dot(ray.direction);
-            var b = 2 * ray.origin.dot(ray.direction)
-            var c = ray.origin.dot(ray.origin) - 1;
-            var det = b*b - 4*a*c;
-            if(det < 0) return; // no intersection
-            var t = (-b - Math.sqrt(det))/(2*a);
-            var point = ray.direction.clone().multiplyScalar(t).addSelf(ray.origin);
-
-            // convert to lat/lon
-            var lat = Math.asin(point.y) + rotation[0];
-            var lon = Math.atan2(point.x, point.z) - rotation[1];
-            lat = 180/Math.PI*lat;
-            lon = 180/Math.PI*lon - 90;
-            while(lon < -180) lon += 360;
-            while(lon > 180) lon -= 360;
-            while(lat < -90) lat += 360;
-            while(lat > 270) lat -= 360;
-            if(lat > 90) lat = 90 - lat;
-            
-            choroplethUtils.highlightCountryAt(gl, lat, lon);
-        }
-
-        function update(evt){
+        function dragUpdate(evt){
             rotation[1] += (evt.pageX - dragStart[0])*MOUSE_SENSITIVITY[0]*zoom;
             rotation[0] += (evt.pageY - dragStart[1])*MOUSE_SENSITIVITY[1]*zoom;
         }
@@ -302,6 +328,8 @@ d3.gl.globe = function(){
 
             function start() {
                 // 3js state
+                var gl = {};
+                gl.datum = d;
                 initGL(gl, texture);
                 initControls(gl, gl.renderer.domElement);
                 initStyle(gl.renderer.domElement);
@@ -368,6 +396,12 @@ d3.gl.globe = function(){
         else fnTex = function(){return val;}
         return globe;
     }
+    globe.on = function(eventName, callback){
+        if(typeof(eventHandlers[eventName])==="undefined"){
+            throw "unsupported event "+eventName;
+        }
+        eventHandlers[eventName].push(callback);
+    }
 
 
     /* Supported overlays:
@@ -412,11 +446,8 @@ d3.gl.globe = function(){
         function drawCircle(context, plat, plon, pradius, color){
             context.beginPath();
             context.arc(plon, plat, pradius, 0, 2*Math.PI, false);
-            context.lineWidth = 3;
             context.fillStyle = color;
             context.fill();
-            context.strokeStyle = '#fff';
-            context.stroke();
         }
         function points(canvas, datum){
             // render the points into a texture that goes on the globe
@@ -480,6 +511,32 @@ d3.gl.globe = function(){
             if(typeof val == "function") fnData = val;
             else fnData = function(){return val;};
             return points;
+        }
+        points.on = function(eventName, callback){
+            globe.on(eventName, function(evt){
+                var latlon = evt.latlon;
+                if(latlon == null) return;
+                
+                // find the point that was intersected
+                evt.point = null;
+                var data = fnData(evt.datum);
+                var mind = null;
+                for(var i = 0; i < data.length; i++){
+                    var lat = fnLat(data[i], i);
+                    var lon = fnLon(data[i], i);
+                    var rad = fnRadius(data[i], i);
+                    var dlat = lat - latlon[0];
+                    var dlon = (lon - latlon[1]) * Math.cos(lat*Math.PI/180);
+                    var d = Math.sqrt(dlat*dlat+dlon*dlon);
+                    // within 4 degrees counts as a click
+                    if(d > Math.max(4, rad+2)) continue;
+                    if(!mind || (d < mind)){
+                        mind = d;
+                        evt.point = data[i];
+                    }
+                }
+                callback(evt);
+            });
         }
 
         overlayTex.push(points);
