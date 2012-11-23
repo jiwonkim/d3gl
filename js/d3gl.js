@@ -475,14 +475,14 @@ d3.gl.globe = function(){
             var linesGeo = new THREE.Geometry();
             array.forEach(function(elem){
                 var lat = Math.PI/180*fnLat(elem);
-                var lon = Math.PI/180*fnLon(elem);
+                var lon = Math.PI/180*(fnLon(elem) + 90);
                 var color = fnColor(elem);
                 var height = fnHeight(elem); // in units of globe radius
                 var r = height > 1 ? 2 : 1 + height;
                 var x, y, z;
-                x = r*Math.cos(lat)*Math.cos(lon);
-                y = r*Math.cos(lat)*Math.sin(lon);
-                z = r*Math.sin(lat);
+                x = r*Math.cos(lat)*Math.sin(lon);
+                y = r*Math.sin(lat);
+                z = r*Math.cos(lat)*Math.cos(lon);
 
                 linesGeo.vertices.push(
                     new THREE.Vector3(0, 0, 0),
