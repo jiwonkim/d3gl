@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>D3GL Space</title>
+    <link rel="stylesheet" href="../css/demo.css" />
+</head>
+<style>
+body{
+background:black;
+color:white;
+}
+#year{
+position:absolute;
+top:0px;
+left:950px;
+}
+#labels span {
+display:inline-block;
+width:300px;
+text-align:center;
+}
+</style>
+<body>
+
+<h1>D3GL Space</h1>
+<script type="text/javascript" src="../js/jquery-1.8.2.js"></script>
+<script type="text/javascript" src="../js/jquery.mousewheel.js"></script>
+<script type="text/javascript" src="../js/d3.v2.js"></script>
+<script type="text/javascript" src="../js/RequestAnimationFrame.js"></script>
+<script type="text/javascript" src="../js/three.js"></script>
+<script type="text/javascript" src="../js/d3gl.js"></script>
+<!-- All scripts above are included here:
+<script type="text/javascript" src="../js/d3gl.min.js"></script> -->
+
+<h1 id="year"></h1>
+<div id="globes"></div>
+<div id="labels"></div>
+<div id="detail"></div>
+
+<script type="text/javascript">
+// all moon landings
+var bodies = [
+    "moon",
+    "venus",
+    "mars",
+    "titan"
+];
+
+$(function(){
+    d3.csv("/data/space.csv", function(rows){
+        // organize the data
+        var landings = {};
+        rows.forEach(function(r){
+            r.site_lat = parseFloat(r.site_lat);
+            r.site_lon = parseFloat(r.site_lon);
+            var p = r.land_date.split("-");
+            r.land_date = new Date(parseInt(p[0]), parseInt(p[1]), parseInt(p[2]));
+            if(!landings[r.body])landings[r.body]=[];
+            landings[r.body].push(r);
+        });
+
+        // display the data
+        var latest_landing, show_date;
+        d3.select("#labels").selectAll("span")
+            .data(bodies).enter().append("span")
+            .text(function(body){ return body; });
+        var globe = d3.gl.globe()
+            .width(300).height(300)
+            .texture(function(body){return "../img/"+body+"-tex.jpg";});
+        var shapes = globe.points()
+            .data(function(body){ return landings[body]; })
+            .latitude(function(d){ return d.site_lat; })
+            .longitude(function(d){ return d.site_lon; })
+            .radius(function(d){
+                var dt = show_date.getTime()-d.land_date.getTime();
+                dt /= 1000*60*60*24; // how many days ago we landed
+                if(dt < 0){
+                    return 0;
+                } else {
+                    return 4 / (1 + dt/500);
+                }
+            })
+            .color(function(d){ 
+                if(d.name.indexOf("Apollo") >= 0) return "#0044ff";
+                if(d.name.indexOf("Luna") >= 0) return "#f00";
+                if(d.name.indexOf("Surveyor") >= 0) return "#48f";
+                if(d.name.indexOf("Venera") >= 0) return "#f00";
+                if(d.name.indexOf("Vega") >= 0) return "#f00";
+                if(d.name.indexOf("Viking") >= 0) return "#08a";
+                return "#0c0";
+            })
+            .on('mousemove', function(evt){ 
+                if(evt.point) updateDetail(evt.point);
+            });
+        d3.select("#globes").selectAll("span")
+            .data(bodies).enter().append("span").call(globe);
+
+        // finally, animate the data
+        function updateDate(){
+            // change the date
+            var year = (new Date().getTime()/1000)%52 + 1960;
+            show_date = new Date(Math.floor(year), Math.floor((year*12)%12), 1);
+            updateYearDisplay(show_date);
+            
+            // highlight the most recent landing
+            var most_recent;
+            latest_landing = null;
+            for(var i = 0; i < rows.length; i++){
+                var ago = show_date.getTime() - rows[i].land_date.getTime();
+                if(ago < 0) continue;
+                if(most_recent && most_recent < ago) continue;
+                most_recent = ago;
+                latest_landing = rows[i];
+            }
+            if(latest_landing != null) updateDetail(latest_landing);
+
+            requestAnimationFrame(now);
+        }
+        updateDate();
+    });
+
+    // helper functions
+    function updateYearDisplay(d){
+        $("#year").text(dateToStr(d, false));
+    }
+    function dateToStr(d, days){
+        var str = d.getFullYear() + " " + 
+            ["Jan", "Feb", "Mar", "Apr", "May", "June", "July", "Aug", "Sep", "Oct", "Nov", "Dec"][d.getMonth()];
+        if(days) str += " "+d.getDate();
+        return str;
+    }
+    function updateDetail(landing){
+        var body = landing.body=="moon"?
+            "the moon":
+            landing.body[0].toUpperCase()+landing.body.substring(1);
+        var coords = 
+            Math.abs(landing.site_lat) + (landing.site_lat>0?"N":"S")+" "+
+            Math.abs(landing.site_lon) + (landing.site_lon>0?"E":"W");
+        var htm = "<h2>"+landing.name+"</h2>"+
+            "<div>"+landing.site_name+" "+coords+"</div>"+
+            "<div>landed "+dateToStr(landing.land_date,true)+" on "+body+"</div>";
+        $("#detail").html(htm);
+    }
+});
+
+</script>
+</body>
+</html>

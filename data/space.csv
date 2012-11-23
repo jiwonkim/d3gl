@@ -1,0 +1,38 @@
+body,name,land_date,site_name,site_lat,site_lon
+moon,Apollo 11,1969-07-20,Mare Tranquilitatis,0.674,23.473
+moon,Apollo 12,1969-11-19,Oceanus Procellarum,-3.014,-23.419
+moon,Apollo 14,1971-02-05,Fra Mauro,-3.645,-17.471
+moon,Apollo 15,1971-07-30,Hadley Rille,26.132,3.634
+moon,Apollo 16,1972-04-20,Descartes,-8.973,15.499
+moon,Apollo 17,1972-12-11,Taurus-Littrow,20.188,30.775
+moon,Luna-9,1966-01-31,Oceanus Procellarum,7.13,-64.37
+moon,Luna-13,1966-12-21,Oceanus Procellarum,18.9,-62.05
+moon,Luna-16,1970-09-12,Mare Fecunditatis,-0.68,056.30
+moon,Luna-17,1970-11-10,Mare Imbrium,38.28,-35
+moon,Luna-20,1972-02-14,Mare Fecunditatis,3.57,56.50
+moon,Luna-21,1973-01-08,LeMonnier Crater,25.85,30.45
+moon,Luna-24,1976-08-09,Mare Crisium,12.25,62.20
+moon,Surveyor 1,1966-05-30,Oceanus Procellarum,-2.45,-43.22
+moon,Surveyor 3,1967-04-20,Oceanus Procellarum,-2.94,-24
+moon,Surveyor 5,1967-09-08,Mare Tranquillitatis,1.41,23.18
+moon,Surveyor 6,1967-11-07,Sinus Medii,0.46,-1.5
+moon,Surveyor 7,1968-01-07,Tycho Crater,-41.01,-12
+venus,Venera 7,1970-12-15,Venus,-5,-9
+venus,Venera 8,1972-03-27,Venus,-10.7,-24.75
+venus,Venera 9,1975-06-08,Venus,31,-68.4
+venus,Venera 10,1975-06-14,Venus,15.42,-68.5
+venus,Venera 11,1978-09-09,Venus,-14,-61
+venus,Venera 12,1978-09-14,Venus,-7,-66
+venus,Venera 13,1981-10-30,Venus,-7.5,-57
+venus,Venera 14,1981-11-14,Venus,-13.25,-50
+venus,Vega 1,1985-06-11,Venus,7.2,177.8
+venus,Vega 2,1985-06-15,Venus,-7.14,177.67
+titan,Huygens,2005-01-14,Xanadu,-10.2,167.6
+mars,Mars 3,1971-01-01,Sirenum Terra,-45,158
+mars,Viking 1,1976-01-0,Chryse Planitia,23,-48
+mars,Viking 2,1976-01-01,Utopia Planitia,48,134
+mars,Mars Pathfinder & Sojourner,1997-01-01,Ares Vallis,19.3,-33.5
+mars,Spirit rover (MER-A),2004-01-01,Gusev crater,-14.6,175.5
+mars,Opportunity rover (MER-B),2004-01-01,Meridiani Planum,-1.9462,-5.5
+mars,Phoenix Mars Lander,2008-01-01,Vastitas Borealis,68.15,-125.9
+mars,Curiosity,2012-01-01,Aeolis Palus in Gale Crater,-4.5,137.2
