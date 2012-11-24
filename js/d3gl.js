@@ -328,7 +328,6 @@ d3.gl.globe = function(){
 
             function start() {
                 // 3js state
-                var gl = {};
                 gl.datum = d;
                 initGL(gl, texture);
                 initControls(gl, gl.renderer.domElement);
@@ -547,7 +546,6 @@ d3.gl.globe = function(){
         var fnLat, fnLon, fnColor, fnHeight, fnData;
         var barsFs, barsVs;
         function bars(datum){
-            console.log("wat");
             // render the points into a texture that goes on the globe
             var array = fnData(datum);
             var linesGeo = new THREE.Geometry();
