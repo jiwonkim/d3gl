@@ -11,7 +11,7 @@ if(!d3 || !jQuery || !THREE || !requestAnimationFrame){
 
 d3.gl = {};
 d3.gl.globe = function(){
-    // PUBLIC PROPERTIES
+    // *** see PROPERTIES
     // viewport dimensions, in pixels
     var width = 400;
     var height = 400;
@@ -26,13 +26,12 @@ d3.gl.globe = function(){
         'dblclick':[]
     };
 
-    // PRIVATE VARS
+    // *** PRIVATE
     var zoom = 2.0, rotation = [0, 0]; // azith, angle
     // overlays. these are functions that either render onto the globe tex (eg colored countries),
     // or which run after the globe itself to draw additional 3D elements (eg arcs)
     var overlayTex = []; 
     var overlay3D = [];
-    var gl = {};
 	// constants
 	var VIEW_ANGLE = 45,
 	    NEAR = 0.01,
@@ -42,39 +41,27 @@ d3.gl.globe = function(){
     var MIN_ZOOM = 0.5, MAX_ZOOM = 2;
     var COUNTRY_CODE_TEX = "../img/country-codes.png";
 
-    var colorOverlayUtils = {
-        loadShaders: function(callback) {
-            var loaded = 0;
-            $.get("../shaders/color_overlay_fs.glsl", function(fs) {
-                overlayFs = fs;
-                if(++loaded == 2) callback();
-            });
-            $.get("../shaders/color_overlay_vs.glsl", function(vs) {
-                overlayVs = vs;
-                if(++loaded == 2) callback();
-            });
-        },
-        createMaterial: function(bgTexture, overlayTexture, additionalUniforms) {
-            var vertexShader = overlayVs;
-            var fragmentShader = overlayFs;
-            var uniforms = {
-                texture: {
-                    type: "t",
-                    value: THREE.ImageUtils.loadTexture(bgTexture)
-                },
-                overlay: {
-                    type: "t",
-                    value: overlayTexture
-                },
-            };
-            $.extend(true, uniforms, additionalUniforms);
-            var material = new THREE.ShaderMaterial({
-                vertexShader: vertexShader,
-                fragmentShader: fragmentShader,
-                uniforms: uniforms,
-            });
-            return material;
-        },
+    // *** HELPER FUNCTIONS
+    function initMaterial(shaders, textures){
+        var vertexShader = shaders[0];
+        var fragmentShader = shaders[1];
+        var uniforms = {
+            texture: {
+                type: "t",
+                value: textures.base
+            },
+            overlay: {
+                type: "t",
+                value: textures.overlay
+            },
+        };
+        //$.extend(true, uniforms, additionalUniforms);
+        var material = new THREE.ShaderMaterial({
+            vertexShader: vertexShader,
+            fragmentShader: fragmentShader,
+            uniforms: uniforms,
+        });
+        return material;
     };
     var choroplethUtils = {
         loadCountryCodeTexture: function(callback) {
@@ -94,7 +81,7 @@ d3.gl.globe = function(){
             x = Math.floor(this.codes.width * (lon + 180)/360);
             y = this.codes.height - 
                 Math.floor(this.codes.height * (lat + 90)/180);
-            
+
             var idx, r, g, b;
             idx = (y*this.codes.width + x)*4;
             r = this.codesImageData.data[idx];
@@ -160,9 +147,23 @@ d3.gl.globe = function(){
         },
     }
 
+    function loadShaders(name, callback){
+        var urls = [], shaders = [], loaded = 0;
+        urls.push("../shaders/"+name+"_vs.glsl");
+        urls.push("../shaders/"+name+"_fs.glsl");
+        for(var i = 0; i < urls.length; i++){
+            (function(){
+                var j = i;
+                $.get(urls[j], function(shader) {
+                    shaders[j] = shader;
+                    if(++loaded == urls.length) callback(shaders);
+                });
+            })();
+        }
+    }
+
     // sets up a ThreeJS globe
-    function initGL(gl, tex){
-        gl.meshes = [];
+    function initGL(gl){
         var scene = new THREE.Scene();
 
         // camera
@@ -181,8 +182,8 @@ d3.gl.globe = function(){
         var canvas = document.createElement("canvas");
         canvas.width = 4000;
         canvas.height = 2000;
-        var texture = new THREE.Texture(canvas);
-        sphereMaterial = colorOverlayUtils.createMaterial(tex, texture);
+        gl.textures.overlay = new THREE.Texture(canvas);
+        sphereMaterial = initMaterial(gl.shaders, gl.textures);
 
         // map view:
         //    sphereMaterial = choroplethUtils.createMaterial(tex);
@@ -214,15 +215,54 @@ d3.gl.globe = function(){
         });
         renderer.setSize(width, height);
 
-        gl.meshes.push(sphere);
+        gl.meshes = [sphere];
         gl.overlayCanvas = canvas;
-        gl.overlayTexture = texture;
         gl.uniforms = sphereMaterial.uniforms;
         gl.renderer = renderer;
         gl.scene = scene;
         gl.camera = camera;
         gl.projector = new THREE.Projector();
-        gl.scene = scene;
+    }
+
+    function initControls(gl, elem){
+        var dragStart;
+        var latlon = null;
+        $(elem).mousedown(function(evt){
+            fireMouseEvent("mousedown", gl, evt);
+            evt.preventDefault();
+            dragStart = [evt.pageX, evt.pageY];
+        }).mousemove(function(evt){
+            fireMouseEvent("mousemove", gl, evt);
+            if(!dragStart) return;
+            dragUpdate(evt);
+            dragStart = [evt.pageX, evt.pageY]; 
+        }).mouseup(function(evt){
+            fireMouseEvent("mouseup", gl, evt);
+            if(!dragStart) return;
+            dragUpdate(evt);
+            dragStart = null;
+        }).click(function(evt){
+            fireMouseEvent("click", gl, evt);
+        }).dblclick(function(evt){
+            fireMouseEvent("dblclick", gl, evt);
+        }).mousewheel(function(evt, delta, dx, dy){
+            zoom *= Math.pow(1-ZOOM_SENSITIVITY, dy);
+            zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
+            evt.preventDefault();
+        });
+
+
+        function dragUpdate(evt){
+            rotation[1] += (evt.pageX - dragStart[0])*MOUSE_SENSITIVITY[0]*zoom;
+            rotation[0] += (evt.pageY - dragStart[1])*MOUSE_SENSITIVITY[1]*zoom;
+        }
+    }
+
+    // This is not quite as clean as
+    // an external stylesheet, but simpler for
+    // the end user.
+    function initStyle(elem){
+        elem.style.cursor = "pointer";
     }
 
     /**
@@ -274,99 +314,79 @@ d3.gl.globe = function(){
         }
     }
 
-    function initControls(gl, elem){
-        var dragStart;
-        var latlon = null;
-        $(elem).mousedown(function(evt){
-            fireMouseEvent("mousedown", gl, evt);
-            evt.preventDefault();
-            dragStart = [evt.pageX, evt.pageY];
-        }).mousemove(function(evt){
-            fireMouseEvent("mousemove", gl, evt);
-            if(!dragStart) return;
-            dragUpdate(evt);
-            dragStart = [evt.pageX, evt.pageY]; 
-        }).mouseup(function(evt){
-            fireMouseEvent("mouseup", gl, evt);
-            if(!dragStart) return;
-            dragUpdate(evt);
-            dragStart = null;
-        }).click(function(evt){
-            fireMouseEvent("click", gl, evt);
-        }).dblclick(function(evt){
-            fireMouseEvent("dblclick", gl, evt);
-        }).mousewheel(function(evt, delta, dx, dy){
-            zoom *= Math.pow(1-ZOOM_SENSITIVITY, dy);
-            zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
-            evt.preventDefault();
-        });
 
-
-        function dragUpdate(evt){
-            rotation[1] += (evt.pageX - dragStart[0])*MOUSE_SENSITIVITY[0]*zoom;
-            rotation[0] += (evt.pageY - dragStart[1])*MOUSE_SENSITIVITY[1]*zoom;
-        }
-    }
-
-    // This is not quite as clean as
-    // an external stylesheet, but simpler for
-    // the end user.
-    function initStyle(elem){
-        elem.style.cursor = "pointer";
-    }
-
-    // renders. see http://bost.ocks.org/mike/chart/
+    // *** RENDER FUNCTION
+    // see http://bost.ocks.org/mike/chart/
     function globe(g){
-        // render into each canvas
-        g.each(function(d,i){
-            var element = this;
-            if(element.tagName == "canvas") throw "D3GL can only render into Canvas elements";
-            var texture = fnTex(d);
-            console.log("Rendering. "+
-                "Dimensions: "+width+","+height+" "+
-                "Texture: "+texture);
-
-            function start() {
-                // 3js state
-                gl.datum = d;
-                initGL(gl, texture);
-                initControls(gl, gl.renderer.domElement);
-                initStyle(gl.renderer.domElement);
-                element.appendChild(gl.renderer.domElement);
-                
-                for(var i = 0; i < overlay3D.length; i++) {
-                    overlay3D[i](d);
-                }
-                
-                // called 60 times per second
-                function render(){
-                    // draw the texture
-                    gl.overlayCanvas.width = gl.overlayCanvas.width;
-                    for(var i = 0; i < overlayTex.length; i++){
-                        overlayTex[i](gl.overlayCanvas, d);
-                    }
-                    gl.overlayTexture.needsUpdate = true;
-                    
-                    // draw the globe
-                    for(var i = 0; i < gl.meshes.length; i++) {
-                        gl.meshes[i].rotation.x = rotation[0];
-                        gl.meshes[i].rotation.y = rotation[1];
-                    }
-                    gl.camera.position.z = 1+zoom;
-                    gl.renderer.render(gl.scene, gl.camera);
-                    requestAnimationFrame(render);
-                }
-                render();
-            }
-
-            colorOverlayUtils.loadShaders(function() {
-                choroplethUtils.loadCountryCodeTexture(function(ev) {
-                    choroplethUtils.codes = ev.target;
-                    start();
-                });
-            });
-        });
+        var elems = [];
+        g.each(function(d,i){elems.push([this,d,i])});
+        var i = 0;
+        var iint = setInterval(function(){
+            globeRender.apply(elems[i][0], [elems[i][1],elems[i][2]]);
+            i++;
+            if(i == elems.length) clearInterval(iint);
+        }, 4000);
     }
+    function globeRender(d,i){
+        // validate 
+        if(this.tagName == "canvas") throw "D3GL creates its own canvas elements. "+
+            "Render into a <div>, not directly into a <canvas>."
+
+        // gl stores all the rendering state for each individual globe.
+        // remember that a call to d3.gl.globe() may result in multiple globes (one per datum)
+        gl = {};
+        gl.element = this; // the D3 primitive: one dom element, one datum
+        gl.datum = d;
+        gl.index = i;
+        gl.textures = {};
+        // load shaders and textures, then start rendering
+        var texUrl = fnTex(d);
+        gl.textures.base = THREE.ImageUtils.loadTexture(texUrl);
+        // TODO: wait for per-globe stuff to load?
+        loadShaders("color_overlay", function(shaders){
+            gl.shaders = shaders;
+            start();
+        });
+
+        function start() {
+            // 3js state
+            initGL(gl); // set up scene, transform, etc
+            initControls(gl, gl.renderer.domElement); // mouse zoom+rotate
+            initStyle(gl.renderer.domElement); // <canvas> style
+            gl.element.appendChild(gl.renderer.domElement);
+            
+            // now render the 3D overlay
+            for(var i = 0; i < overlay3D.length; i++) {
+                overlay3D[i](gl, d);
+            }
+            
+            // called 60 times per second
+            function render(){
+                // draw the texture overlay
+                gl.overlayCanvas.width = gl.overlayCanvas.width; // clear
+                for(var i = 0; i < overlayTex.length; i++){
+                    overlayTex[i](gl.overlayCanvas, d);
+                }
+                gl.textures.overlay.needsUpdate = true; // tell 3js to update
+                
+                // draw the globe
+                for(var i = 0; i < gl.meshes.length; i++) {
+                    gl.meshes[i].rotation.x = rotation[0];
+                    gl.meshes[i].rotation.y = rotation[1];
+                }
+                gl.camera.position.z = 1+zoom;
+                gl.renderer.render(gl.scene, gl.camera);
+                requestAnimationFrame(render);
+            }
+            render();
+        }
+        /*choroplethUtils.loadCountryCodeTexture(wait("choro", wait(function(ev) {
+            choroplethUtils.codes = ev.target;
+            start();
+        }));*/
+    }
+
+    // *** PROPERTIES
     globe.width = function(val){
         if(!arguments.length) return width;
         width = val;
@@ -417,6 +437,7 @@ d3.gl.globe = function(){
         var data = []; // array or function returning array
         var color = "#ff0000"; // color or function
 
+
         function shapes(){
             // render shape overlay
         }
@@ -430,6 +451,33 @@ d3.gl.globe = function(){
             color = val;
             return shapes;
         }
+        shapes.on = function(eventName, callback){
+            globe.on(eventName, function(evt){
+                var latlon = evt.latlon;
+                if(latlon == null) return;
+                
+                // find the shape that was intersected
+                var x, y;
+                x = Math.floor(this.codes.width * (latlon[1] + 180)/360);
+                y = this.codes.height - 
+                    Math.floor(this.codes.height * (latlon[0] + 90)/180);
+                
+                var idx, r, g, b;
+                idx = (y*this.codes.width + x)*4;
+                r = codesImageData.data[idx];
+                g = codesImageData.data[idx + 1];
+                b = codesImageData.data[idx + 2];
+
+                evt.shapeId = shapeIdFromColor(r, g, b);
+                callback(evt);
+            });
+        }
+
+        // helper functions
+        function shapeIdFromColor(r,g,b){
+            // TODO
+        }
+
         overlays.push(shapes);
         return shapes;
     }
@@ -545,7 +593,7 @@ d3.gl.globe = function(){
     globe.bars = function() {
         var fnLat, fnLon, fnColor, fnHeight, fnData;
         var barsFs, barsVs;
-        function bars(datum){
+        function bars(gl, datum){
             // render the points into a texture that goes on the globe
             var array = fnData(datum);
             var linesGeo = new THREE.Geometry();
@@ -576,24 +624,12 @@ d3.gl.globe = function(){
                 attributes.customColor.value.push(new THREE.Color(hex));
             });
 
-            loadShaders(addBars);
+            loadShaders("bars", addBars);
             
-            function loadShaders(callback) {
-                var loaded = 0;
-                $.get("../shaders/bars_fs.glsl", function(fs) {
-                    barsFs = fs;
-                    if(++loaded == 2) callback();
-                });
-                $.get("../shaders/bars_vs.glsl", function(vs) {
-                    barsVs = vs;
-                    if(++loaded == 2) callback();
-                });
-            }
-            
-            function addBars() {
+            function addBars(shaders) {
                 var lineMaterial = new THREE.ShaderMaterial({
-                    vertexShader: barsVs,
-                    fragmentShader: barsFs,
+                    vertexShader: shaders[0],
+                    fragmentShader: shaders[1],
                     attributes: attributes,
                 });
 
@@ -602,8 +638,6 @@ d3.gl.globe = function(){
                 gl.scene.add(line);
                 gl.meshes.push(line);
             }
-
-            return bars;
         }
 
         bars.latitude = function(val){
