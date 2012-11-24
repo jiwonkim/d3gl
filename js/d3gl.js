@@ -30,8 +30,8 @@ d3.gl.globe = function(){
     var zoom = 2.0, rotation = [0, 0]; // azith, angle
     // overlays. these are functions that either render onto the globe tex (eg colored countries),
     // or which run after the globe itself to draw additional 3D elements (eg arcs)
-    var overlayTex = []; 
-    var overlay3D = [];
+    var overlayTex = []; // function(canvas, datum)
+    var overlay3D = []; // function(gl, datum)
 	// constants
 	var VIEW_ANGLE = 45,
 	    NEAR = 0.01,
@@ -183,7 +183,7 @@ d3.gl.globe = function(){
         canvas.width = 4000;
         canvas.height = 2000;
         gl.textures.overlay = new THREE.Texture(canvas);
-        sphereMaterial = initMaterial(gl.shaders, gl.textures);
+        var sphereMaterial = initMaterial(gl.shaders, gl.textures);
 
         // map view:
         //    sphereMaterial = choroplethUtils.createMaterial(tex);
@@ -215,6 +215,9 @@ d3.gl.globe = function(){
         });
         renderer.setSize(width, height);
 
+        if(!sphere || !canvas || !sphereMaterial.uniforms || !renderer || !scene || !camera){
+            throw "Initialization failed.";
+        }
         gl.meshes = [sphere];
         gl.overlayCanvas = canvas;
         gl.uniforms = sphereMaterial.uniforms;
@@ -318,14 +321,7 @@ d3.gl.globe = function(){
     // *** RENDER FUNCTION
     // see http://bost.ocks.org/mike/chart/
     function globe(g){
-        var elems = [];
-        g.each(function(d,i){elems.push([this,d,i])});
-        var i = 0;
-        var iint = setInterval(function(){
-            globeRender.apply(elems[i][0], [elems[i][1],elems[i][2]]);
-            i++;
-            if(i == elems.length) clearInterval(iint);
-        }, 4000);
+        g.each(globeRender);
     }
     function globeRender(d,i){
         // validate 
@@ -334,19 +330,23 @@ d3.gl.globe = function(){
 
         // gl stores all the rendering state for each individual globe.
         // remember that a call to d3.gl.globe() may result in multiple globes (one per datum)
-        gl = {};
+        var gl = {};
         gl.element = this; // the D3 primitive: one dom element, one datum
         gl.datum = d;
         gl.index = i;
         gl.textures = {};
         // load shaders and textures, then start rendering
         var texUrl = fnTex(d);
-        gl.textures.base = THREE.ImageUtils.loadTexture(texUrl);
-        // TODO: wait for per-globe stuff to load?
-        loadShaders("color_overlay", function(shaders){
-            gl.shaders = shaders;
-            start();
+        gl.textures.base = THREE.ImageUtils.loadTexture(texUrl, null, function(){
+            loadShaders("color_overlay", function(shaders){
+                gl.shaders = shaders;
+                start();
+            });
         });
+        /*choroplethUtils.loadCountryCodeTexture(wait("choro", wait(function(ev) {
+            choroplethUtils.codes = ev.target;
+            start();
+        }));*/
 
         function start() {
             // 3js state
@@ -380,10 +380,6 @@ d3.gl.globe = function(){
             }
             render();
         }
-        /*choroplethUtils.loadCountryCodeTexture(wait("choro", wait(function(ev) {
-            choroplethUtils.codes = ev.target;
-            start();
-        }));*/
     }
 
     // *** PROPERTIES

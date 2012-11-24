@@ -38,15 +38,15 @@ text-align:center;
 <div id="detail"></div>
 
 <script type="text/javascript">
-// all moon landings
-var bodies = [
-    "moon",
-    "venus",
-    "mars",
-    "titan"
-];
-
 $(function(){
+    // all moon landings
+    var bodies = [
+        "moon",
+        "venus",
+        "mars",
+        "titan"
+    ];
+
     d3.csv("/data/space.csv", function(rows){
         // organize the data
         var landings = {};
