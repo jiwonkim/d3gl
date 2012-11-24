@@ -1,26 +1,21 @@
-uniform sampler2D texture;    // background texture
-uniform sampler2D overlay;       // country color lookup table
-uniform sampler2D codes;
-uniform int country;
-
-varying vec2 vUv;
-
-int country_code_from_color(vec3 rgb) {
-    return int(rgb.r*255.*255.*255. + rgb.g*255.*255. + rgb.b*255. + 0.5);
-}
-
-bool is_highlighted() {
-    if(country == 0) return false;
-    int fragment_country = country_code_from_color(texture2D(codes, vUv).rgb);
-    return country == fragment_country;
-}
+uniform sampler2D texBase;    // background texture
+uniform sampler2D texOverlay; // canvas overlay texture
+uniform sampler2D texShapes;  // shape texture. grayscale.
+// uniform sampler2D texShapeColors; // shape color -> color
+//uniform vec3 opacities;       // opacities for [base texture, shape overlay, canvas overlay]
+varying vec2 vUv;             // texture coordinats
 
 void main() {
-    vec4 color = texture2D(overlay, vUv);
-    vec4 texture = texture2D(texture, vUv);
-    float opacity = (color.r + color.g + color.b)/3.0;
-    gl_FragColor = mix(texture, color, opacity);
-    if(is_highlighted()) {
-        gl_FragColor = mix(gl_FragColor, vec4(1., 1., 0., 1.), 0.5);
-    }
+    vec4 colorBase = texture2D(texBase, vUv);
+    vec4 colorShape = texture2D(texShapes, vUv);
+    vec4 colorOverlay = texture2D(texOverlay, vUv);
+    // TODO: lookup colorShape in a table for country shading
+    //colorShape = texture2D(texShapeColors, vec2(colorShape.r, 0.0));
+
+    gl_FragColor = mix(gl_FragColor, colorBase, 1.0);
+    float opacityShape = (colorShape.r+colorShape.g+colorShape.b)/3.0;
+    gl_FragColor = mix(gl_FragColor, colorShape, opacityShape);
+    float opacityOverlay = (colorOverlay.r+colorOverlay.g+colorOverlay.b)/3.0;
+    gl_FragColor = mix(gl_FragColor, colorOverlay, opacityOverlay);
 }
+

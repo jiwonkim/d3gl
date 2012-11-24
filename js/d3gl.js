@@ -30,7 +30,7 @@ d3.gl.globe = function(){
     var zoom = 2.0, rotation = [0, 0]; // azith, angle
     // overlays. these are functions that either render onto the globe tex (eg colored countries),
     // or which run after the globe itself to draw additional 3D elements (eg arcs)
-    var overlayTex = []; // function(canvas, datum)
+    var overlayTex = []; // function(context2d, datum)
     var overlay3D = []; // function(gl, datum)
 	// constants
 	var VIEW_ANGLE = 45,
@@ -46,20 +46,26 @@ d3.gl.globe = function(){
         var vertexShader = shaders[0];
         var fragmentShader = shaders[1];
         var uniforms = {
-            texture: {
+            texBase: {
                 type: "t",
                 value: textures.base
             },
-            overlay: {
+            texShapes: {
+                type: "t",
+                value: textures.shapes
+            },
+            texOverlay: {
                 type: "t",
                 value: textures.overlay
-            },
+            }
         };
         //$.extend(true, uniforms, additionalUniforms);
         var material = new THREE.ShaderMaterial({
             vertexShader: vertexShader,
             fragmentShader: fragmentShader,
             uniforms: uniforms,
+            depthWrite:false,
+            depthTest: false,
         });
         return material;
     };
@@ -185,21 +191,12 @@ d3.gl.globe = function(){
         gl.textures.overlay = new THREE.Texture(canvas);
         var sphereMaterial = initMaterial(gl.shaders, gl.textures);
 
-        // map view:
-        //    sphereMaterial = choroplethUtils.createMaterial(tex);
-        //    gl.uniforms = sphereMaterial.uniforms;
-        // plain view:
-        //    var texture = THREE.ImageUtils.loadTexture(tex);
-        //    sphereMaterial = new THREE.MeshLambertMaterial({
-        //        color: 0xffffff,
-        //        map: texture
-        //    });
-
         // create the actual globe
         var radius = 1.0, segments = 80, rings = 40;
         var sphere = new THREE.Mesh(
            new THREE.SphereGeometry(radius, segments, rings),
            sphereMaterial);
+        sphere.doubleSided = true;
         scene.add(sphere);
                 
         // add a point light
@@ -244,6 +241,10 @@ d3.gl.globe = function(){
             if(!dragStart) return;
             dragUpdate(evt);
             dragStart = null;
+        }).mouseleave(function(evt){
+            if(!dragStart) return;
+            dragUpdate(evt);
+            dragStart = null;
         }).click(function(evt){
             fireMouseEvent("click", gl, evt);
         }).dblclick(function(evt){
@@ -253,7 +254,6 @@ d3.gl.globe = function(){
             zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
             evt.preventDefault();
         });
-
 
         function dragUpdate(evt){
             rotation[1] += (evt.pageX - dragStart[0])*MOUSE_SENSITIVITY[0]*zoom;
@@ -338,15 +338,13 @@ d3.gl.globe = function(){
         // load shaders and textures, then start rendering
         var texUrl = fnTex(d);
         gl.textures.base = THREE.ImageUtils.loadTexture(texUrl, null, function(){
-            loadShaders("color_overlay", function(shaders){
-                gl.shaders = shaders;
-                start();
+            gl.textures.shapes = THREE.ImageUtils.loadTexture(COUNTRY_CODE_TEX, null, function(){
+                loadShaders("color_overlay", function(shaders){
+                    gl.shaders = shaders;
+                    start();
+                });
             });
         });
-        /*choroplethUtils.loadCountryCodeTexture(wait("choro", wait(function(ev) {
-            choroplethUtils.codes = ev.target;
-            start();
-        }));*/
 
         function start() {
             // 3js state
@@ -363,9 +361,13 @@ d3.gl.globe = function(){
             // called 60 times per second
             function render(){
                 // draw the texture overlay
-                gl.overlayCanvas.width = gl.overlayCanvas.width; // clear
+                var context = gl.overlayCanvas.getContext(2d);
+                context.setTransform(1,0,0,1,0,0); // identity
+                context.width = gl.overlayCanvas.width;
+                context.height = gl.overlayCanvas.height;
+                context.clearRect(0,0,context.width,context.height);
                 for(var i = 0; i < overlayTex.length; i++){
-                    overlayTex[i](gl.overlayCanvas, d);
+                    overlayTex[i](context, d);
                 }
                 gl.textures.overlay.needsUpdate = true; // tell 3js to update
                 
@@ -492,9 +494,8 @@ d3.gl.globe = function(){
             context.fillStyle = color;
             context.fill();
         }
-        function points(canvas, datum){
+        function points(context, datum){
             // render the points into a texture that goes on the globe
-            var context = canvas.getContext("2d"); 
             var array = fnData(datum);
             array.forEach(function(elem){
                 var lat = fnLat(elem);
@@ -505,9 +506,9 @@ d3.gl.globe = function(){
                 var color = fnColor(elem);
                 var radius = fnRadius(elem); // radius in degrees
                 if(radius <= 0) return;
-                var pradius = radius * canvas.width / 360.0;
-                var plat = canvas.height * (1-(lat + 90)/180);
-                var plon = canvas.width * (lon + 180)/360;
+                var pradius = radius * context.width / 360.0;
+                var plat = context.height * (1-(lat + 90)/180);
+                var plon = context.width * (lon + 180)/360;
 
                 // scale to mitigate projection distortion
                 var xscale = 1 / (Math.cos(lat*Math.PI/180) + 0.01);
@@ -516,9 +517,9 @@ d3.gl.globe = function(){
                 context.scale(xscale, 1.0);
                 // draw it twice if on the the int'l date line to avoid clipping
                 if(plon < pradius){
-                    drawCircle(context, plat, plon + canvas.width/xscale, pradius, color);
-                } else if(plon > canvas.width/xscale-pradius){
-                    drawCircle(context, plat, plon - canvas.width/xscale, pradius, color);
+                    drawCircle(context, plat, plon + context.width/xscale, pradius, color);
+                } else if(plon > context.width/xscale-pradius){
+                    drawCircle(context, plat, plon - context.width/xscale, pradius, color);
                 }
                 drawCircle(context, plat, plon, pradius, color);
                 context.restore();
