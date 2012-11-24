@@ -12,10 +12,8 @@ void main() {
     // TODO: lookup colorShape in a table for country shading
     //colorShape = texture2D(texShapeColors, vec2(colorShape.r, 0.0));
 
-    gl_FragColor = mix(gl_FragColor, colorBase, 1.0);
-    float opacityShape = (colorShape.r+colorShape.g+colorShape.b)/3.0;
-    gl_FragColor = mix(gl_FragColor, colorShape, opacityShape);
-    float opacityOverlay = (colorOverlay.r+colorOverlay.g+colorOverlay.b)/3.0;
-    gl_FragColor = mix(gl_FragColor, colorOverlay, opacityOverlay);
+    gl_FragColor = mix(gl_FragColor, colorBase, colorBase.a);
+    gl_FragColor = mix(gl_FragColor, colorShape, colorShape.a);
+    gl_FragColor = mix(gl_FragColor, colorOverlay, colorOverlay.a);
 }
 

@@ -39,7 +39,7 @@ d3.gl.globe = function(){
     var MOUSE_SENSITIVITY = [0.005, 0.005];
     var ZOOM_SENSITIVITY = 0.1; // (0 = no effect, 1 = infinite)
     var MIN_ZOOM = 0.5, MAX_ZOOM = 2;
-    var COUNTRY_CODE_TEX = "../img/country-codes.png";
+    var COUNTRY_CODE_TEX = "../img/shape-countries.png";
 
     // *** HELPER FUNCTIONS
     function initMaterial(shaders, textures){
@@ -338,7 +338,7 @@ d3.gl.globe = function(){
         // load shaders and textures, then start rendering
         var texUrl = fnTex(d);
         gl.textures.base = THREE.ImageUtils.loadTexture(texUrl, null, function(){
-            gl.textures.shapes = THREE.ImageUtils.loadTexture(COUNTRY_CODE_TEX, null, function(){
+            gl.textures.shapes = THREE.ImageUtils.loadTexture("../img/transparent-tex.png", null, function(){
                 loadShaders("color_overlay", function(shaders){
                     gl.shaders = shaders;
                     start();
@@ -361,7 +361,7 @@ d3.gl.globe = function(){
             // called 60 times per second
             function render(){
                 // draw the texture overlay
-                var context = gl.overlayCanvas.getContext(2d);
+                var context = gl.overlayCanvas.getContext("2d");
                 context.setTransform(1,0,0,1,0,0); // identity
                 context.width = gl.overlayCanvas.width;
                 context.height = gl.overlayCanvas.height;
