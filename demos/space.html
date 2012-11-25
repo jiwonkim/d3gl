@@ -65,7 +65,8 @@ $(function(){
             .text(function(body){ return body; });
         var globe = d3.gl.globe()
             .width(300).height(300)
-            .texture(function(body){return "../img/"+body+"-tex.jpg";});
+            .texture(function(body){return "../img/"+body+"-tex.jpg";})
+            .transparency(0.4);
         var shapes = globe.points()
             .data(function(body){ return landings[body]; })
             .latitude(function(d){ return d.site_lat; })
@@ -74,9 +75,9 @@ $(function(){
                 var dt = queryDate().getTime()-d.land_date.getTime();
                 dt /= 1000*60*60*24; // how many days ago we landed
                 if(dt < 0){
-                    return 0;
+                    return 0; // hasn't happened yet. 
                 } else {
-                    return 4 / (1 + dt/500);
+                    return Math.max(4 / (1 + dt/500), 1.5);
                 }
             })
             .color(function(d){ 
@@ -95,11 +96,17 @@ $(function(){
             .data(bodies).enter().append("span").call(globe);
 
         // finally, animate the data
-        var show_date, latest_landing;
+        var minYear = 1962, maxYear = (1970 + new Date().getTime()/1000/3600/24/365.25);
+        var show_date, latest_landing, year = maxYear, playing = false;
+        $("#year").dblclick(function(){
+            year = minYear; 
+            playing = true;
+        }).css("cursor", "pointer");
         function queryDate() { return show_date; } 
-        function updateDate(){
+        globe.on("update", function(){
             // change the date
-            var year = (new Date().getTime()/1000)%52 + 1964;
+            if(playing) year += (1/30);
+            if(year >= maxYear) playing = false;
             show_date = new Date(Math.floor(year), Math.floor((year*12)%12), 1);
             updateYearDisplay(show_date);
             
@@ -117,9 +124,7 @@ $(function(){
                 globe.rotateTo([ll.site_lat, ll.site_lon]);
                 latest_landing = ll;
             }
-            requestAnimationFrame(updateDate);
-        }
-        updateDate();
+        });
     });
 
     // helper functions
