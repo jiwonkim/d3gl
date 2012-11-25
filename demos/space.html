@@ -102,15 +102,16 @@ $(function(){
         // finally, animate the data
         var minYear = 1962, maxYear = (1970 + new Date().getTime()/1000/3600/24/365.25);
         var show_date, latest_landing, year = maxYear, playing = false;
-        $("#year").click(function(){
+        d3.select("#year").on("click", function(){
+            console.log("starting playback.");    
             year = minYear; 
             playing = true;
-        }).css("cursor", "pointer");
+        }).attr("style", "cursor:pointer;");
         function queryDate() { return show_date; } 
         globe.on("update", function(){
             // change the date
             if(playing) year += (1/30);
-            if(year >= maxYear) playing = false;
+            if(year > maxYear) playing = false;
             show_date = new Date(Math.floor(year), Math.floor((year*12)%12), 1);
             updateYearDisplay(show_date);
             

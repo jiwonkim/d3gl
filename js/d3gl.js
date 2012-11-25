@@ -54,8 +54,6 @@ d3.gl.globe = function(){
 
     // *** HELPER FUNCTIONS
     function initMaterial(shaders, textures){
-        var vertexShader = shaders[0];
-        var fragmentShader = shaders[1];
         var uniforms = {
             texBase: {
                 type: "t",
@@ -75,8 +73,8 @@ d3.gl.globe = function(){
             }
         };
         var material = new THREE.ShaderMaterial({
-            vertexShader: vertexShader,
-            fragmentShader: fragmentShader,
+            vertexShader: shaders.vertex,
+            fragmentShader: shaders.fragment,
             uniforms: uniforms,
             transparent: true,
             // no documentation on this at all. examples using doubleSided() are wrong. 
@@ -381,16 +379,20 @@ d3.gl.globe = function(){
         gl.element = this; // the D3 primitive: one dom element, one datum
         gl.datum = d;
         gl.index = i;
+        gl.shaders = shaders.globe;
         gl.textures = {};
-        // load shaders and textures, then start rendering
+
+        // load textures
+        console.log("loading textures");
+        var canvas = document.createElement("canvas");
+        canvas.width = 128;
+        canvas.height = 128;
+        gl.textures.shapes = new THREE.Texture(canvas); // transparent placeholder
+        gl.textures.shapes.needsUpdate = true;
         var texUrl = fnTex(d);
         gl.textures.base = THREE.ImageUtils.loadTexture(texUrl, null, function(){
-            var timg = new Image();
-            timg.onload = function(){
-                gl.shaders = [shaders.globe.vertex, shaders.globe.fragment];
-                start();
-            }
-            timg.src = "data:image/gif;base64,R0lGODlhAQABAIAAAP///////yH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
+            console.log("textures loaded");
+            start();
         });
 
         function start() {
