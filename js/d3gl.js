@@ -534,21 +534,21 @@ d3.gl.globe = function(){
         var fnData = function(d){return d;};
         var fnColor, fnId;
 
-        // shape arguments
-        
-        // load shapes texture
-        var shapesTextureLoaded = false; 
-        //TODO: Let user specify shape codes texture
-        var texture = THREE.ImageUtils.loadTexture("../img/country-codes.png", null, function(){
-            shapesTextureLoaded = true;
-        });
+        var idMap; // url to texture image where colors represent shape ids
+        if(shapesType=="countries") {
+            idMap = "../img/country-codes.png";
+        }
+        var shapesTextureStatus = false;
 
         function shapes(gl, context, datum){
-            if(!shapesTextureLoaded) return;
+            if(shapesTextureStatus == "loading") return;
 
-            // pass in loaded shapes texture as uniform (if not already so)
-            if(gl.uniforms.texShapes.value != texture) {
-                gl.uniforms.texShapes.value = texture;
+            // load id map texture
+            if(!shapesTextureStatus) {
+                shapesTextureStatus = "loading";
+                gl.uniforms.texShapes.value = THREE.ImageUtils.loadTexture(idMap, null, function(){
+                    shapesTextureStatus = "loaded";
+                });
             }
 
             // iterate over data elements and create data texture
@@ -567,16 +567,20 @@ d3.gl.globe = function(){
                 colorLookup[idx + 2] = color.b*255; // b
             }
 
+            /*
+            BUG: currently ids are off by 1
+
             var i = 839;
             colorLookup[i*3] = 255;
             colorLookup[i*3 + 1] = 0;
             colorLookup[i*3 + 2] = 0;
+
+            */
             
             // pass in data texture as uniform
             gl.uniforms.texColorLookup.value = new THREE.DataTexture(colorLookup, textureWidth, textureHeight, THREE.RGBFormat);
             gl.uniforms.texColorLookup.value.needsUpdate = true;
             gl.uniforms.lookupShapes.value = 1;
-            console.log(gl.uniforms);
         }
 
         shapes.data = function(val){
@@ -585,6 +589,13 @@ d3.gl.globe = function(){
             else fnData = function(){return val;};
             return shapes;
         }
+        shapes.map = function(val) {
+            if(arguments.length == 0) return fnMap;
+            if(typeof val == "function") fnMap = val;
+            else fnMap = function(){return val;};
+            return shapes;
+        }
+        // Shape id has to in the range [0, 999]
         shapes.id = function(val){
             if(arguments.length == 0) return fnId;
             if(typeof val == "function") fnId = val;
@@ -880,15 +891,13 @@ d3.gl.globe = function(){
 "        vec4 shapeColor = texture2D(texShapes, vUv);",
 "        int id = colorToShapeId(shapeColor.rgb);",
 "        vec4 color = texture2D(texColorLookup, vec2(float(id)/1024., 0.));",
-"        gl_FragColor = vec4(color.rgb, 1.);",
+"        gl_FragColor = color;",
 "        return;",
 "    }",
 "",
 "    vec4 colorBase = texture2D(texBase, vUv);",
 "    vec4 colorShape = texture2D(texShapes, vUv);",
 "    vec4 colorOverlay = texture2D(texOverlay, vUv);",
-"    // TODO: lookup colorShape in a table for country shading",
-"    //colorShape = texture2D(texShapeColors, vec2(colorShape.r, 0.0));",
 "",
 "    gl_FragColor = mix(gl_FragColor, colorBase, 1.0);",
 "    gl_FragColor = mix(gl_FragColor, colorShape, colorShape.a);",

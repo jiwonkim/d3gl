@@ -54,9 +54,8 @@ $(function(){
         var globe = d3.gl.globe()
             .width(600).height(600)
             .texture("../img/earth-blank.png");
-        var shapes = globe.shapes(d3.gl.countries)
+        var shapes = globe.shapes("countries")
             .data(data)
-            //TODO: Pass in custom shape texture
             .id(function(d){
                 // the id returned here must match the color in the shape texture
                 // such that r*10*10 + g*10 + b = id
