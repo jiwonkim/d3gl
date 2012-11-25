@@ -530,7 +530,7 @@ d3.gl.globe = function(){
      * * .arcs() -- display arcs connecting points on the globe
      * * .points() -- display points, such as cities
      */
-    globe.shapes = function(shapeObj){
+    globe.shapes = function(shapesType){
         var fnData = function(d){return d;};
         var fnColor, fnId;
 
