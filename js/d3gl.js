@@ -39,6 +39,7 @@ d3.gl.globe = function(){
     // animation
     var anim = {};
 	// constants
+    var shaders = {}; // hardcoded strings, see bottom
 	var VIEW_ANGLE = 45,
 	    NEAR = 0.01,
 	    FAR = 100;
@@ -53,8 +54,6 @@ d3.gl.globe = function(){
 
     // *** HELPER FUNCTIONS
     function initMaterial(shaders, textures){
-        var vertexShader = shaders[0];
-        var fragmentShader = shaders[1];
         var uniforms = {
             texBase: {
                 type: "t",
@@ -82,8 +81,8 @@ d3.gl.globe = function(){
             }
         };
         var material = new THREE.ShaderMaterial({
-            vertexShader: vertexShader,
-            fragmentShader: fragmentShader,
+            vertexShader: shaders.vertex,
+            fragmentShader: shaders.fragment,
             uniforms: uniforms,
             transparent: true,
             // no documentation on this at all. examples using doubleSided() are wrong. 
@@ -181,21 +180,6 @@ d3.gl.globe = function(){
             );
             return material;
         },
-    }
-
-    function loadShaders(name, callback){
-        var urls = [], shaders = [], loaded = 0;
-        urls.push("../shaders/"+name+"_vs.glsl");
-        urls.push("../shaders/"+name+"_fs.glsl");
-        for(var i = 0; i < urls.length; i++){
-            (function(){
-                var j = i;
-                $.get(urls[j], function(shader) {
-                    shaders[j] = shader;
-                    if(++loaded == urls.length) callback(shaders);
-                });
-            })();
-        }
     }
 
     // sets up a ThreeJS globe
@@ -404,16 +388,20 @@ d3.gl.globe = function(){
         gl.element = this; // the D3 primitive: one dom element, one datum
         gl.datum = d;
         gl.index = i;
+        gl.shaders = shaders.globe;
         gl.textures = {};
-        // load shaders and textures, then start rendering
+
+        // load textures
+        console.log("loading textures");
+        var canvas = document.createElement("canvas");
+        canvas.width = 128;
+        canvas.height = 128;
+        gl.textures.shapes = new THREE.Texture(canvas); // transparent placeholder
+        gl.textures.shapes.needsUpdate = true;
         var texUrl = fnTex(d);
         gl.textures.base = THREE.ImageUtils.loadTexture(texUrl, null, function(){
-            gl.textures.shapes = THREE.ImageUtils.loadTexture("../img/transparent-tex.png", null, function(){
-                loadShaders("color_overlay", function(shaders){
-                    gl.shaders = shaders;
-                    start();
-                });
-            });
+            console.log("textures loaded");
+            start();
         });
 
         function start() {
@@ -770,20 +758,16 @@ d3.gl.globe = function(){
                 attributes.customColor.value.push(new THREE.Color(hex));
             });
 
-            loadShaders("bars", addBars);
-            
-            function addBars(shaders) {
-                var lineMaterial = new THREE.ShaderMaterial({
-                    vertexShader: shaders[0],
-                    fragmentShader: shaders[1],
-                    attributes: attributes,
-                });
+            var lineMaterial = new THREE.ShaderMaterial({
+                vertexShader: shaders.bars.vertex,
+                fragmentShader: shaders.bars.fragment,
+                attributes: attributes,
+            });
 
-                var line = new THREE.Line(linesGeo, lineMaterial);
-                line.type = THREE.Lines;
-                gl.scene.add(line);
-                gl.meshes.push(line);
-            }
+            var line = new THREE.Line(linesGeo, lineMaterial);
+            line.type = THREE.Lines;
+            gl.scene.add(line);
+            gl.meshes.push(line);
         }
 
         bars.latitude = function(val){
@@ -828,6 +812,76 @@ d3.gl.globe = function(){
         overlayTex.push(painter);
         return globe;
     }
+
+
+    /// *** SHADERS
+    /*
+     * Globe shader
+     * Composites a base layer, shape layer, and canvas layer.
+     *
+     * The base layer is simply an image, with configurable transparency.
+     * Used by all globes, see globe.texture(...).transparency(...).
+     *
+     * The shape layer consists of two textures, one which is static (ids shapes)
+     * and another which is a color->color lookup, and may be animated. It lets you
+     * eg color the world's countries by GDP.
+     * Used by globe.shapes(), etc.
+     *
+     * The canvas layer comes from an offscreen canvas, and supports arbitrary drawings.
+     * Used by globe.points(), etc.
+     */
+    shaders.globe = {};
+    shaders.globe.vertex = [
+"// texture coordinate for vertex to be interpolated and passed into",
+"// fragment shader per fragment",
+"varying vec2 vUv;",
+"",
+"void main() {",
+"    vUv = uv;",
+"    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1);",
+"}"
+].join("\n");
+    shaders.globe.fragment = [
+"uniform sampler2D texBase;    // background texture",
+"uniform sampler2D texOverlay; // canvas overlay texture",
+"uniform sampler2D texShapes;  // shape texture. grayscale.",
+"uniform float transparency;",
+"varying vec2 vUv;             // texture coordinates",
+"",
+"void main() {",
+"    vec4 colorBase = texture2D(texBase, vUv);",
+"    vec4 colorShape = texture2D(texShapes, vUv);",
+"    vec4 colorOverlay = texture2D(texOverlay, vUv);",
+"    // TODO: lookup colorShape in a table for country shading",
+"    //colorShape = texture2D(texShapeColors, vec2(colorShape.r, 0.0));",
+"",
+"    gl_FragColor = mix(gl_FragColor, colorBase, 1.0);",
+"    gl_FragColor = mix(gl_FragColor, colorShape, colorShape.a);",
+"    gl_FragColor = mix(gl_FragColor, colorOverlay, colorOverlay.a);",
+"    gl_FragColor.a = max(colorShape.a, max(colorOverlay.a, transparency));",
+"}"
+].join("\n");
+
+    /**
+     * Bar shader. Creates bar charts on the globe.
+     */
+    shaders.bar = {};
+    shaders.bar.vertex = [
+"attribute vec3 customColor;",
+"varying vec3 vColor;",
+"",
+"void main() {",
+"    vColor = customColor;",
+"    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1);",
+"}"
+].join("\n");
+    shaders.bar.fragment = [
+"varying vec3 vColor;",
+"",
+"void main() {",
+"    gl_FragColor = vec4(vColor, 1.0);",
+"}"
+].join("\n");
 
     return globe;
 };
