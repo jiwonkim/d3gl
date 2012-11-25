@@ -36,6 +36,7 @@ void main() {
         gl_FragColor = vec4(color.rgb, 1.);
         return;
     }
+
     vec4 colorBase = texture2D(texBase, vUv);
     vec4 colorShape = texture2D(texShapes, vUv);
     vec4 colorOverlay = texture2D(texOverlay, vUv);
