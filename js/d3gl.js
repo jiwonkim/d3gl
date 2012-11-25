@@ -16,14 +16,18 @@ d3.gl.globe = function(){
     var width = 400;
     var height = 400;
     // callbacks (globe-level. see shapes(), points(), etc)
-    var fnTex;
+    var fnTex, fnTransparency;
     // event handlers
     var eventHandlers = {
+        /* mouse handlers */
         'mousedown':[],
         'mousemove':[],
         'mouseup':[],
         'click':[],
-        'dblclick':[]
+        'dblclick':[],
+
+        /* fired before each render */
+        'update':[]
     };
 
     // *** PRIVATE
@@ -40,7 +44,7 @@ d3.gl.globe = function(){
 	    FAR = 100;
     var MOUSE_SENSITIVITY = 0.15; // degrees rotated per pixel
     var ZOOM_SENSITIVITY = 0.1; // (0 = no effect, 1 = infinite)
-    var MIN_ZOOM = 0.5, MAX_ZOOM = 2;
+    var MIN_ZOOM = 0.5, MAX_ZOOM = 4;
     var COUNTRY_CODE_TEX = "../img/shape-countries.png";
 
     // debug
@@ -72,15 +76,27 @@ d3.gl.globe = function(){
                 type: "i",
                 value: 0
             },
+            transparency: {
+                type: "f",
+                value: 1.0      
+            }
         };
-        //$.extend(true, uniforms, additionalUniforms);
         var material = new THREE.ShaderMaterial({
             vertexShader: vertexShader,
             fragmentShader: fragmentShader,
             uniforms: uniforms,
-            depthTest: false,
-            blending: THREE.AdditiveBlending
+            transparent: true,
+            // no documentation on this at all. examples using doubleSided() are wrong. 
+            // had to grub through the source.
+            //depthTest: false,
+            //side: THREE.DoubleSide,
+            // the default (if you comment out the following lines) is SrcAlpha/OneMinusSrcAlpha, AddEquation
+            blending: THREE.CustomBlending,
+            blendSrc: THREE.SrcAlphaFactor,
+            blendDst: THREE.OneMinusSrcAlphaFactor,
+            blendEquation: THREE.AddEquation
         });
+
         return material;
     };
     var choroplethUtils = {
@@ -204,13 +220,17 @@ d3.gl.globe = function(){
         canvas.height = 2000;
         gl.textures.overlay = new THREE.Texture(canvas);
         var sphereMaterial = initMaterial(gl.shaders, gl.textures);
+        var sphereMaterialBack = initMaterial(gl.shaders, gl.textures);
+        //sphereMaterial.depthTest = sphereMaterialBack.depthTest = false;
+        //sphereMaterial.depthWrite = sphereMaterialBack.depthWrite = false;
+        sphereMaterialBack.side = THREE.BackSide;
 
         // create the actual globe
         var radius = 1.0, segments = 80, rings = 40;
-        var sphere = new THREE.Mesh(
-           new THREE.SphereGeometry(radius, segments, rings),
-           sphereMaterial);
-        sphere.doubleSided = true;
+        var geom = new THREE.SphereGeometry(radius, segments, rings);
+        var sphere = new THREE.Mesh(geom, sphereMaterial);
+        var sphereBack = new THREE.Mesh(geom, sphereMaterialBack);
+        scene.add(sphereBack);
         scene.add(sphere);
                 
         // add a point light
@@ -229,8 +249,9 @@ d3.gl.globe = function(){
         if(!sphere || !canvas || !sphereMaterial.uniforms || !renderer || !scene || !camera){
             throw "Initialization failed.";
         }
-        gl.meshes = [sphere];
+        gl.meshes = [sphere,sphereBack];
         gl.overlayCanvas = canvas;
+        gl.material = sphereMaterial;
         gl.uniforms = sphereMaterial.uniforms;
         console.log(gl.uniforms);
         gl.renderer = renderer;
@@ -331,6 +352,13 @@ d3.gl.globe = function(){
             handlers[i](evt);
         }
     }
+    function fireEvent(name, evt) {
+        var handlers = eventHandlers[name];
+        if (handlers.length == 0) return;
+        for(var i = 0; i < handlers.length; i++){
+            handlers[i](evt);
+        }
+    }
 
     function updateAnimations(){
         var now = new Date().getTime();
@@ -403,7 +431,9 @@ d3.gl.globe = function(){
             // called 60 times per second
             function render(){
                 // update
+                fireEvent("update", null);
                 updateAnimations();
+                if(fnTransparency) gl.uniforms.transparency.value = fnTransparency(d);
 
                 // draw the texture overlay
                 var context = gl.overlayCanvas.getContext("2d");
@@ -422,7 +452,11 @@ d3.gl.globe = function(){
                     gl.meshes[i].rotation.y = -(rotation.lon+90)*Math.PI/180.0;
                 }
                 gl.camera.position.z = 1+zoom;
+                gl.material.side = THREE.DoubleSide;
+                gl.renderer.sortObjects = false;
+                gl.renderer.sortElements = false;
                 gl.renderer.render(gl.scene, gl.camera);
+
                 requestAnimationFrame(render);
             }
             render();
@@ -453,9 +487,15 @@ d3.gl.globe = function(){
         return globe;
     }
     globe.texture = function(val){
-        if(!arguments.length) return texture;  
+        if(!arguments.length) return fnTex;  
         if(typeof val === "function") fnTex = val;
         else fnTex = function(){return val;}
+        return globe;
+    }
+    globe.transparency = function(val){
+        if(!arguments.length) return fnTransparency;  
+        if(typeof val === "function") fnTransparency = val;
+        else fnTransparency = function(){return val;}
         return globe;
     }
     globe.on = function(eventName, callback){
@@ -463,6 +503,18 @@ d3.gl.globe = function(){
             throw "unsupported event "+eventName;
         }
         eventHandlers[eventName].push(callback);
+    }
+    globe.rotation = function(latlon){
+        if(!arguments.length) return rotation;
+        if(!latlon || !latlon.lat || !latlon.lon) throw "Invalid rotation()";
+        rotation = latlon;
+        return globe;
+    }
+    globe.zoom = function(z){
+        if(!arguments.length) return zoom;
+        if(!z || z<0) throw "Invalid zoom()";
+        zoom = z;
+        return globe;
     }
 
     // *** FUNCTIONS

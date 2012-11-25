@@ -5,6 +5,7 @@ uniform sampler2D texShapes;  // shape texture. grayscale.
 uniform sampler2D texColorLookup; // shape color -> color
 uniform int lookupShapes;
 
+uniform float transparency;
 //uniform vec3 opacities;       // opacities for [base texture, shape overlay, canvas overlay]
 varying vec2 vUv;             // texture coordinats
 
@@ -41,8 +42,9 @@ void main() {
     // TODO: lookup colorShape in a table for country shading
     //colorShape = texture2D(texShapeColors, vec2(colorShape.r, 0.0));
 
-    gl_FragColor = mix(gl_FragColor, colorBase, colorBase.a);
+    gl_FragColor = mix(gl_FragColor, colorBase, 1.0);
     gl_FragColor = mix(gl_FragColor, colorShape, colorShape.a);
     gl_FragColor = mix(gl_FragColor, colorOverlay, colorOverlay.a);
+    gl_FragColor.a = max(colorShape.a, max(colorOverlay.a, transparency));
 }
 
