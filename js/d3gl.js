@@ -531,7 +531,8 @@ d3.gl.globe = function(){
      * * .points() -- display points, such as cities
      */
     globe.shapes = function(shapeObj){
-        var fnData, fnColor, fnId;
+        var fnData = function(d){return d;};
+        var fnColor, fnId;
 
         // shape arguments
         
@@ -630,7 +631,8 @@ d3.gl.globe = function(){
      * * radius 
      */
     globe.points = function(){
-        var fnLat, fnLon, fnColor, fnRadius, fnData;
+        var fnData = function(d){return d;};
+        var fnLat, fnLon, fnColor, fnRadius;
         function drawCircle(context, plat, plon, pradius, color){
             context.beginPath();
             context.arc(plon, plat, pradius, 0, 2*Math.PI, false);
@@ -732,7 +734,8 @@ d3.gl.globe = function(){
     };
 
     globe.bars = function() {
-        var fnLat, fnLon, fnColor, fnHeight, fnData;
+        var fnData = function(d){return d;};
+        var fnLat, fnLon, fnColor, fnHeight;
         var barsFs, barsVs;
         function bars(gl, datum){
             // render the points into a texture that goes on the globe
