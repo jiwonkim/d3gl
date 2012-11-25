@@ -25,7 +25,6 @@ d3.gl.globe = function(){
         'mouseup':[],
         'click':[],
         'dblclick':[],
-
         /* fired before each render */
         'update':[]
     };
@@ -36,10 +35,11 @@ d3.gl.globe = function(){
     // or which run after the globe itself to draw additional 3D elements (eg arcs)
     var overlayTex = []; // function(context2d, datum)
     var overlay3D = []; // function(gl, datum)
+    var shaders = {}; // hardcoded strings, see bottom
     // animation
     var anim = {};
-	// constants
-    var shaders = {}; // hardcoded strings, see bottom
+
+	// *** CONSTANTS
 	var VIEW_ANGLE = 45,
 	    NEAR = 0.01,
 	    FAR = 100;
@@ -47,10 +47,6 @@ d3.gl.globe = function(){
     var ZOOM_SENSITIVITY = 0.1; // (0 = no effect, 1 = infinite)
     var MIN_ZOOM = 0.5, MAX_ZOOM = 4;
     var COUNTRY_CODE_TEX = "../img/shape-countries.png";
-
-    // debug
-    window.globe= globe;
-    window.anim = anim;
 
     // *** HELPER FUNCTIONS
     function initMaterial(shaders, textures){
@@ -314,15 +310,23 @@ d3.gl.globe = function(){
         var point = ray.direction.clone().multiplyScalar(t).addSelf(ray.origin);
 
         // convert to lat/lon
-        var lat = Math.asin(point.y) + rotation.lat;
-        var lon = Math.atan2(point.x, point.z) + rotation.lon;
+        var rlat = rotation.lat*Math.PI/180;
+        var rlon = rotation.lon*Math.PI/180;
+        var rot = new THREE.Matrix4();
+        rot.rotateY(rlon);
+        rot.rotateX(-rlat);
+        point = rot.multiplyVector3(point);
+        //console.log(""+point);
+        var lat = Math.asin(point.y);
+        var lon = Math.atan2(point.x, point.z);
         lat = 180/Math.PI*lat;
-        lon = 180/Math.PI*lon - 90;
+        lon = 180/Math.PI*lon;
         while(lon < -180) lon += 360;
         while(lon > 180) lon -= 360;
         while(lat < -90) lat += 360;
         while(lat > 270) lat -= 360;
-        if(lat > 90) lat = 90 - lat;
+        if(lat > 90) lat = 180 - lat;
+        if(lat < -90 || lat > 90 || lon < -180 || lon > 180) throw "lat/lon error "+lat+"/"+lon;
         return [lat, lon];
     }
 
