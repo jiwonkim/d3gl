@@ -9,6 +9,10 @@ body{
 background:black;
 color:white;
 }
+h1,h2 {
+margin:10px;
+width:300px;
+}
 #year{
 position:absolute;
 top:0px;
@@ -98,7 +102,7 @@ $(function(){
         // finally, animate the data
         var minYear = 1962, maxYear = (1970 + new Date().getTime()/1000/3600/24/365.25);
         var show_date, latest_landing, year = maxYear, playing = false;
-        $("#year").dblclick(function(){
+        $("#year").click(function(){
             year = minYear; 
             playing = true;
         }).css("cursor", "pointer");
