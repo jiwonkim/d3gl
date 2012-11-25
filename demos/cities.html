@@ -30,7 +30,7 @@ $(function(){
         .width(600).height(600)
         .texture("../img/earth-blank.png");
     var selectedCity = null;
-    var shapes = globe.bars()
+    var bars = globe.bars()
         .data(data)
         .latitude(function(d){ return d.lat; })
         .longitude(function(d){ return d.lon; })
@@ -44,7 +44,6 @@ $(function(){
         .longitude(function(d){ return d.lon; })
         .radius(function(d){ return d.radius })
         .color(function(d){ return d==selectedCity ? "#fff" : d.color; });
-    */        
 
     var painter = globe.paint(function(context, datum){
         context.beginPath();
@@ -59,6 +58,7 @@ $(function(){
         context.strokeStyle= "#f00";
         context.stroke();
     });
+    */        
 
     d3.select("body").append("span")
         .datum(data).call(globe);

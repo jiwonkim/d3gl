@@ -56,14 +56,22 @@ d3.gl.globe = function(){
                 type: "t",
                 value: textures.base
             },
-            texShapes: {
-                type: "t",
-                value: textures.shapes
-            },
             texOverlay: {
                 type: "t",
                 value: textures.overlay
-            }
+            },
+            texShapes: {
+                type: "t",
+                value: 0
+            },
+            texColorLookup: {
+                type: "t",
+                value: 0
+            },
+            lookupShapes: {
+                type: "i",
+                value: 0
+            },
         };
         //$.extend(true, uniforms, additionalUniforms);
         var material = new THREE.ShaderMaterial({
@@ -224,6 +232,7 @@ d3.gl.globe = function(){
         gl.meshes = [sphere];
         gl.overlayCanvas = canvas;
         gl.uniforms = sphereMaterial.uniforms;
+        console.log(gl.uniforms);
         gl.renderer = renderer;
         gl.scene = scene;
         gl.camera = camera;
@@ -403,11 +412,11 @@ d3.gl.globe = function(){
                 context.height = gl.overlayCanvas.height;
                 context.clearRect(0,0,context.width,context.height);
                 for(var i = 0; i < overlayTex.length; i++){
-                    overlayTex[i](context, d);
+                    overlayTex[i](gl, context, d);
                 }
                 gl.textures.overlay.needsUpdate = true; // tell 3js to update
                 
-                // draw the globe
+                // draw the objects in scene
                 for(var i = 0; i < gl.meshes.length; i++) {
                     gl.meshes[i].rotation.x = rotation.lat*Math.PI/180.0;
                     gl.meshes[i].rotation.y = -(rotation.lon+90)*Math.PI/180.0;
@@ -478,26 +487,68 @@ d3.gl.globe = function(){
      * * .points() -- display points, such as cities
      */
     globe.shapes = function(shapeObj){
-        /*if(!shapeObj || !shapeObj.ids || !shapeObj.texture){
-            throw "globe.shapes() called with an invalid argument. see docs.";
-        }*/
+        var fnData, fnColor, fnId;
 
         // shape arguments
-        var data = []; // array or function returning array
-        var color = "#ff0000"; // color or function
+        
+        // load shapes texture
+        var shapesTextureLoaded = false; 
+        //TODO: Let user specify shape codes texture
+        var texture = THREE.ImageUtils.loadTexture("../img/country-codes.png", null, function(){
+            shapesTextureLoaded = true;
+        });
 
+        function shapes(gl, context, datum){
+            if(!shapesTextureLoaded) return;
 
-        function shapes(){
-            // render shape overlay
+            // pass in loaded shapes texture as uniform (if not already so)
+            if(gl.uniforms.texShapes.value != texture) {
+                gl.uniforms.texShapes.value = texture;
+            }
+
+            // iterate over data elements and create data texture
+            var array = fnData(datum);
+            var textureHeight = 1;
+            var textureWidth = 1024;
+            var colorLookup = new Uint8Array(1024*3);
+            
+            for (var i = 0; i < array.length; i++) {
+                var id = fnId(array[i]);
+                var idx = (id - 1)*3;
+                var color = new THREE.Color(fnColor(array[i]));
+                
+                colorLookup[idx] = color.r*255; // r
+                colorLookup[idx + 1] = color.g*255; // g
+                colorLookup[idx + 2] = color.b*255; // b
+            }
+
+            var i = 839;
+            colorLookup[i*3] = 255;
+            colorLookup[i*3 + 1] = 0;
+            colorLookup[i*3 + 2] = 0;
+            
+            // pass in data texture as uniform
+            gl.uniforms.texColorLookup.value = new THREE.DataTexture(colorLookup, textureWidth, textureHeight, THREE.RGBFormat);
+            gl.uniforms.texColorLookup.value.needsUpdate = true;
+            gl.uniforms.lookupShapes.value = 1;
         }
+
         shapes.data = function(val){
-            if(!arguments.length) return data;
-            data = val;
+            if(arguments.length == 0) return fnData;
+            if(typeof val == "function") fnData = val;
+            else fnData = function(){return val;};
+            return shapes;
+        }
+        shapes.id = function(val){
+            if(arguments.length == 0) return fnId;
+            if(typeof val == "function") fnId = val;
+            else fnId = function(){return val;};
             return shapes;
         }
         shapes.color = function(val){
-            if(!arguments.length) return color;
-            color = val;
+            if(arguments.length == 0) return fnColor;
+            if(typeof val == "function") fnColor = val;
+            else fnColor = function(){return val;};
             return shapes;
         }
         shapes.on = function(eventName, callback){
@@ -522,12 +573,7 @@ d3.gl.globe = function(){
             });
         }
 
-        // helper functions
-        function shapeIdFromColor(r,g,b){
-            // TODO
-        }
-
-        overlays.push(shapes);
+        overlayTex.push(shapes);
         return shapes;
     }
 
@@ -545,7 +591,7 @@ d3.gl.globe = function(){
             context.fillStyle = color;
             context.fill();
         }
-        function points(context, datum){
+        function points(gl, context, datum){
             // render the points into a texture that goes on the globe
             var array = fnData(datum);
             array.forEach(function(elem){

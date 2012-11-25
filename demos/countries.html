@@ -19,6 +19,7 @@
 <!-- All scripts above are included here:
 <script type="text/javascript" src="../js/d3gl.min.js"></script> -->
 
+<script type="text/javascript" src="country_code_map.js"></script>
 <script type="text/javascript">
 
 var query = {};
@@ -41,22 +42,32 @@ $(function(){
     // create the ui
     createControls();
 
+    data = [
+        {"Country Code": "BRA", "Color": "0x00ff00"},
+        {"Country Code": "USA", "Color": "0xff0000"},
+        {"Country Code": "CHN", "Color": "0x0000ff"},
+    ];
     // the world bank has an awesome api
     // see http://data.worldbank.org/        
-    d3.csv("/data/worldbank_2010.csv", function(data){
-        console.log(data);
+    //d3.csv("/data/worldbank/worldbank_2010.csv", function(data){
         // create the globe
         var globe = d3.gl.globe()
             .width(600).height(600)
             .texture("../img/earth-blank.png");
         var shapes = globe.shapes(d3.gl.countries)
-            .data(data, function(d){ return d["Country code"]; })
-            .color(function(countryCode){
-                return countryCode=="USA" ? "#ff0000" : "#00ff00";
+            .data(data)
+            //TODO: Pass in custom shape texture
+            .id(function(d){
+                // the id returned here must match the color in the shape texture
+                // such that r*10*10 + g*10 + b = id
+                return country_code_map["alpha_code_to_country"][d["Country Code"]]['country-code'];
+            })
+            .color(function(d){
+                return d["Color"];
             });
         d3.select("body").append("span")
             .datum(data).call(globe);
-    });
+    //});
 });
 
 
