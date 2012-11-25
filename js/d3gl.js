@@ -494,6 +494,7 @@ d3.gl.globe = function(){
             throw "unsupported event "+eventName;
         }
         eventHandlers[eventName].push(callback);
+        return globe;
     }
     globe.rotation = function(latlon){
         if(!arguments.length) return rotation;
@@ -615,6 +616,7 @@ d3.gl.globe = function(){
                 evt.shapeId = shapeIdFromColor(r, g, b);
                 callback(evt);
             });
+            return shapes;
         }
 
         overlayTex.push(shapes);
@@ -722,6 +724,7 @@ d3.gl.globe = function(){
                 }
                 callback(evt);
             });
+            return points;
         }
 
         overlayTex.push(points);
