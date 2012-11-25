@@ -33,7 +33,7 @@ d3.gl.globe = function(){
     var zoom = 2.0, rotation = {"lat":0,"lon":0};
     // overlays. these are functions that either render onto the globe tex (eg colored countries),
     // or which run after the globe itself to draw additional 3D elements (eg arcs)
-    var overlayTex = []; // function(context2d, datum)
+    var overlayTex = []; // function(gl, context2d, datum)
     var overlay3D = []; // function(gl, datum)
     var shaders = {}; // hardcoded strings, see bottom
     // animation
@@ -61,7 +61,7 @@ d3.gl.globe = function(){
             },
             texShapes: {
                 type: "t",
-                value: 0
+                value: textures.shapes
             },
             texColorLookup: {
                 type: "t",

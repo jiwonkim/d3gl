@@ -46,7 +46,7 @@ $(function(){
         pointer.lon = evt.latlon[1];
     });
 
-    var painter = globe.paint(function(context, datum){
+    var painter = globe.paint(function(gl, context, datum){
         context.beginPath();
         var latScale = d3.scale.linear()
             .domain([-90,90]).range([context.height,0]);

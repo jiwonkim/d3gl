@@ -64,6 +64,7 @@ $(function(){
         });
 
         // display the data
+        var mouseoverPoint;
         d3.select("#labels").selectAll("span")
             .data(bodies).enter().append("span")
             .text(function(body){ return body; });
@@ -85,15 +86,15 @@ $(function(){
                 }
             })
             .color(function(d){ 
-                if(d.name.indexOf("Apollo") >= 0) return "#0044ff";
-                if(d.name.indexOf("Luna") >= 0) return "#f00";
-                if(d.name.indexOf("Surveyor") >= 0) return "#48f";
-                if(d.name.indexOf("Venera") >= 0) return "#f00";
-                if(d.name.indexOf("Vega") >= 0) return "#f00";
-                if(d.name.indexOf("Viking") >= 0) return "#08a";
-                return "#0c0";
+                if(d==mouseoverPoint) return "#fff"; // highlight
+                var russia = "#c00", usa = "#33c;";
+                if(d.name.indexOf("Luna") >= 0) return russia;
+                if(d.name.indexOf("Venera") >= 0) return russia;
+                if(d.name.indexOf("Vega") >= 0) return russia;
+                return usa;
             })
             .on('mousemove', function(evt){ 
+                mouseoverPoint = evt.point;
                 if(evt.point) updateDetail(evt.point);
             });
         d3.select("#globes").selectAll("span")
@@ -102,7 +103,7 @@ $(function(){
         // finally, animate the data
         var minYear = 1962, maxYear = (1970 + new Date().getTime()/1000/3600/24/365.25);
         var show_date, latest_landing, year = maxYear, playing = false;
-        d3.select("#year").on("click", function(){
+        d3.select("#year").on("mousedown", function(){
             console.log("starting playback.");    
             year = minYear; 
             playing = true;
@@ -110,7 +111,7 @@ $(function(){
         function queryDate() { return show_date; } 
         globe.on("update", function(){
             // change the date
-            if(playing) year += (1/30);
+            if(playing) year += (1/80);
             if(year > maxYear) playing = false;
             show_date = new Date(Math.floor(year), Math.floor((year*12)%12), 1);
             updateYearDisplay(show_date);
