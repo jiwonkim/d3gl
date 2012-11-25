@@ -60,7 +60,6 @@ $(function(){
         });
 
         // display the data
-        var latest_landing, show_date;
         d3.select("#labels").selectAll("span")
             .data(bodies).enter().append("span")
             .text(function(body){ return body; });
@@ -72,7 +71,7 @@ $(function(){
             .latitude(function(d){ return d.site_lat; })
             .longitude(function(d){ return d.site_lon; })
             .radius(function(d){
-                var dt = show_date.getTime()-d.land_date.getTime();
+                var dt = queryDate().getTime()-d.land_date.getTime();
                 dt /= 1000*60*60*24; // how many days ago we landed
                 if(dt < 0){
                     return 0;
@@ -96,24 +95,28 @@ $(function(){
             .data(bodies).enter().append("span").call(globe);
 
         // finally, animate the data
+        var show_date, latest_landing;
+        function queryDate() { return show_date; } 
         function updateDate(){
             // change the date
-            var year = (new Date().getTime()/1000)%52 + 1960;
+            var year = (new Date().getTime()/1000)%52 + 1964;
             show_date = new Date(Math.floor(year), Math.floor((year*12)%12), 1);
             updateYearDisplay(show_date);
             
             // highlight the most recent landing
-            var most_recent;
-            latest_landing = null;
+            var most_recent, ll = null;
             for(var i = 0; i < rows.length; i++){
                 var ago = show_date.getTime() - rows[i].land_date.getTime();
                 if(ago < 0) continue;
                 if(most_recent && most_recent < ago) continue;
                 most_recent = ago;
-                latest_landing = rows[i];
+                ll = rows[i];
             }
-            if(latest_landing != null) updateDetail(latest_landing);
-
+            if(ll != null && ll != latest_landing){ 
+                updateDetail(ll);
+                globe.rotateTo([ll.site_lat, ll.site_lon]);
+                latest_landing = ll;
+            }
             requestAnimationFrame(updateDate);
         }
         updateDate();

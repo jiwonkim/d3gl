@@ -27,19 +27,25 @@ d3.gl.globe = function(){
     };
 
     // *** PRIVATE
-    var zoom = 2.0, rotation = [0, 0]; // azith, angle
+    var zoom = 2.0, rotation = {"lat":0,"lon":0};
     // overlays. these are functions that either render onto the globe tex (eg colored countries),
     // or which run after the globe itself to draw additional 3D elements (eg arcs)
     var overlayTex = []; // function(context2d, datum)
     var overlay3D = []; // function(gl, datum)
+    // animation
+    var anim = {};
 	// constants
 	var VIEW_ANGLE = 45,
 	    NEAR = 0.01,
 	    FAR = 100;
-    var MOUSE_SENSITIVITY = [0.005, 0.005];
+    var MOUSE_SENSITIVITY = 0.15; // degrees rotated per pixel
     var ZOOM_SENSITIVITY = 0.1; // (0 = no effect, 1 = infinite)
     var MIN_ZOOM = 0.5, MAX_ZOOM = 2;
     var COUNTRY_CODE_TEX = "../img/shape-countries.png";
+
+    // debug
+    window.globe= globe;
+    window.anim = anim;
 
     // *** HELPER FUNCTIONS
     function initMaterial(shaders, textures){
@@ -64,8 +70,8 @@ d3.gl.globe = function(){
             vertexShader: vertexShader,
             fragmentShader: fragmentShader,
             uniforms: uniforms,
-            depthWrite:false,
             depthTest: false,
+            blending: THREE.AdditiveBlending
         });
         return material;
     };
@@ -256,8 +262,8 @@ d3.gl.globe = function(){
         });
 
         function dragUpdate(evt){
-            rotation[1] += (evt.pageX - dragStart[0])*MOUSE_SENSITIVITY[0]*zoom;
-            rotation[0] += (evt.pageY - dragStart[1])*MOUSE_SENSITIVITY[1]*zoom;
+            rotation.lon -= (evt.pageX - dragStart[0])*MOUSE_SENSITIVITY*zoom;
+            rotation.lat += (evt.pageY - dragStart[1])*MOUSE_SENSITIVITY*zoom;
         }
     }
 
@@ -295,8 +301,8 @@ d3.gl.globe = function(){
         var point = ray.direction.clone().multiplyScalar(t).addSelf(ray.origin);
 
         // convert to lat/lon
-        var lat = Math.asin(point.y) + rotation[0];
-        var lon = Math.atan2(point.x, point.z) - rotation[1];
+        var lat = Math.asin(point.y) + rotation.lat;
+        var lon = Math.atan2(point.x, point.z) + rotation.lon;
         lat = 180/Math.PI*lat;
         lon = 180/Math.PI*lon - 90;
         while(lon < -180) lon += 360;
@@ -314,6 +320,33 @@ d3.gl.globe = function(){
         evt.datum = gl.datum;
         for(var i = 0; i < handlers.length; i++){
             handlers[i](evt);
+        }
+    }
+
+    function updateAnimations(){
+        var now = new Date().getTime();
+        // rotate
+        if(anim.rotation){
+            var dt = now-anim.rotation.startTime;
+            var duration = anim.rotation.duration;
+            if(dt < 0){
+                throw "wtf";
+            } else if(dt > duration){
+                // done
+                rotation = anim.rotation.end;
+                anim.rotation = null;
+            } else {
+                // in progress
+                var ease = anim.rotation.easing || d3.ease("cubic-in-out");
+                var t = ease(dt/duration);
+                var dlat = anim.rotation.end.lat - anim.rotation.start.lat;
+                var lat = anim.rotation.start.lat + dlat*t;
+                var dlon = anim.rotation.end.lon - anim.rotation.start.lon;
+                if(dlon < -180) dlon += 360;
+                if(dlon > 180) dlon -= 360;
+                var lon = (anim.rotation.start.lon + dlon*t + 180+360)%360 - 180;
+                rotation = {"lat":lat, "lon":lon};
+            }
         }
     }
 
@@ -360,6 +393,9 @@ d3.gl.globe = function(){
             
             // called 60 times per second
             function render(){
+                // update
+                updateAnimations();
+
                 // draw the texture overlay
                 var context = gl.overlayCanvas.getContext("2d");
                 context.setTransform(1,0,0,1,0,0); // identity
@@ -373,8 +409,8 @@ d3.gl.globe = function(){
                 
                 // draw the globe
                 for(var i = 0; i < gl.meshes.length; i++) {
-                    gl.meshes[i].rotation.x = rotation[0];
-                    gl.meshes[i].rotation.y = rotation[1];
+                    gl.meshes[i].rotation.x = rotation.lat*Math.PI/180.0;
+                    gl.meshes[i].rotation.y = -(rotation.lon+90)*Math.PI/180.0;
                 }
                 gl.camera.position.z = 1+zoom;
                 gl.renderer.render(gl.scene, gl.camera);
@@ -418,6 +454,21 @@ d3.gl.globe = function(){
             throw "unsupported event "+eventName;
         }
         eventHandlers[eventName].push(callback);
+    }
+
+    // *** FUNCTIONS
+    globe.rotateTo = function(latlon, ms){
+        console.log("rotateTo(["+latlon.join(",")+"], "+ms+")");
+        if(!ms) ms = 400; // same defaults as jquery
+        else if(ms=="fast") ms = 200;
+        else if(ms=="slow") ms = 600;
+
+        anim.rotation = {
+            start:rotation,
+            end:{"lat":latlon[0],"lon":latlon[1]},
+            startTime:new Date().getTime(),
+            duration:ms
+        };
     }
 
 
