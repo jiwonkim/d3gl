@@ -66,7 +66,7 @@ $(function(){
         var globe = d3.gl.globe()
             .width(300).height(300)
             .texture(function(body){return "../img/"+body+"-tex.jpg";})
-            .transparency(0.4);
+            .transparency(function(body){ return Math.max(1.25 - globe.zoom()/2, 0.3); });
         var shapes = globe.points()
             .data(function(body){ return landings[body]; })
             .latitude(function(d){ return d.site_lat; })
