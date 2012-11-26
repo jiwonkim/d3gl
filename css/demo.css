@@ -23,3 +23,13 @@ background:#ddd;
 background:#aef;
 }
 
+#bubble {
+    padding: 10px;
+    position: absolute;
+    width: 120px;
+    line-height: 1.3;
+    background-color: #fff;
+    border-radius: 10px;
+    display: none;
+}
+

@@ -534,18 +534,25 @@ d3.gl.globe = function(){
         var fnData = function(d){return d;};
         var fnColor, fnId;
 
-        var idMap; // url to texture image where colors represent shape ids
+        var idMap = null; // url to texture image where colors represent shape ids
         if(shapesType=="countries") {
             idMap = "../img/country-codes.png";
         }
+
+        // ImageData object for idMap
+        var idMapImageData = null;
+        
+        // load status for shapes id map texture
         var shapesTextureStatus = false;
 
         function shapes(gl, context, datum){
+            if(!idMap) throw "The id map for shapes has not been defined.";
             if(shapesTextureStatus == "loading") return;
 
             // load id map texture
             if(!shapesTextureStatus) {
                 shapesTextureStatus = "loading";
+                loadIdMapImageData();
                 gl.uniforms.texShapes.value = THREE.ImageUtils.loadTexture(idMap, null, function(){
                     shapesTextureStatus = "loaded";
                 });
@@ -572,12 +579,25 @@ d3.gl.globe = function(){
                     colorLookup[idx + j*4 + 3] = color[3]; // a
                 }
             }
-
             
             // pass in data texture as uniform
             gl.uniforms.texColorLookup.value = new THREE.DataTexture(colorLookup, textureWidth, textureHeight, THREE.RGBAFormat);
             gl.uniforms.texColorLookup.value.needsUpdate = true;
             gl.uniforms.lookupShapes.value = 1;
+        
+            function loadIdMapImageData() {
+                var map = new Image();
+                map.src = idMap;
+                map.onload = function() {
+                    var idCanvas = document.createElement("canvas");
+                    idCanvas.width = map.width;
+                    idCanvas.height = map.height;
+                    var idContext = idCanvas.getContext("2d");
+                    idContext.drawImage(map, 0, 0);
+                    idMapImageData = idContext.getImageData(0, 0,
+                        idCanvas.width, idCanvas.height);
+                }
+            }
         }
 
         shapes.data = function(val){
@@ -607,24 +627,42 @@ d3.gl.globe = function(){
         }
         shapes.on = function(eventName, callback){
             globe.on(eventName, function(evt){
+                if(!idMapImageData) return;
+
+                var data = fnData(evt.datum);
                 var latlon = evt.latlon;
                 if(latlon == null) return;
                 
                 // find the shape that was intersected
                 var x, y;
-                x = Math.floor(this.codes.width * (latlon[1] + 180)/360);
-                y = this.codes.height - 
-                    Math.floor(this.codes.height * (latlon[0] + 90)/180);
+                x = Math.floor(idMapImageData.width * (latlon[1] + 180)/360);
+                y = idMapImageData.height - 
+                    Math.floor(idMapImageData.height * (latlon[0] + 90)/180);
                 
                 var idx, r, g, b;
-                idx = (y*this.codes.width + x)*4;
-                r = codesImageData.data[idx];
-                g = codesImageData.data[idx + 1];
-                b = codesImageData.data[idx + 2];
+                idx = (y*idMapImageData.width + x)*4;
+                r = idMapImageData.data[idx];
+                g = idMapImageData.data[idx + 1];
+                b = idMapImageData.data[idx + 2];
 
-                evt.shapeId = shapeIdFromColor(r, g, b);
+                var shapeId = shapeIdFromColor(r, g, b);
+                for(var i=0; i<data.length; i++) {
+                    if(fnId(data[i])==shapeId) {
+                        evt.shape = data[i];
+                        break;
+                    }
+                }
+
                 callback(evt);
             });
+            
+            function shapeIdFromColor(r, g, b) {
+                var dr = Math.floor((r/25.5)+0.5);
+                var dg = Math.floor((g/25.5)+0.5);
+                var db = Math.floor((b/25.5)+0.5);
+                return dr*10*10 + dg*10 + db;
+            }
+
             return shapes;
         }
 

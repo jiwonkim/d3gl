@@ -21,8 +21,7 @@
 <script type="text/javascript" src="../data/country_code_map.js"></script>
 
 <script type="text/javascript">
-
-var query = {};
+var climateDataTypes = ["pr", "tas"];
 var months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 function createControls(){
     var selected;
@@ -35,21 +34,20 @@ function createControls(){
                 console.log(d); 
                 if(selected) $(selected).removeClass("selected");
                 $(selected = this).addClass("selected");
-                query.variable = d;
             });
 }
 
 function getDataDomain(data) {
     var min = null, max = null;
     data.forEach(function(elem) {
-        elem["rainfall"].forEach(function(datum) {
-            var mm = datum["data"];
+        elem["monthly_data"].forEach(function(datum) {
+            var val = datum["data"];
             if(!min || !max) {
-                min = max = mm;
-            } else if(mm < min) {
-                min = mm;
-            } else if(mm > max) {
-                max = mm;
+                min = max = val;
+            } else if(val < min) {
+                min = val;
+            } else if(val > max) {
+                max = val;
             }
         });
     });
@@ -60,72 +58,115 @@ $(function(){
     // create the ui
     createControls();
 
-    d3.json("../data/rainfall.json", function(data){
-        var domain = getDataDomain(data);
-        console.log(domain);
-        var sr = d3.scale.linear()
+    var data = {};
+    var nLoaded = 0;
+    d3.json("../data/pr.json", function(datum){
+        var domain = getDataDomain(datum);
+        data["pr"] = {};
+        data["pr"].sr = d3.scale.linear()
             .domain(domain)
             .range([255, 0]);
-        var sg = d3.scale.linear()
+        data["pr"].sg = d3.scale.linear()
             .domain(domain)
             .range([234, 153]);
-        var sb = d3.scale.linear()
+        data["pr"].sb = d3.scale.linear()
             .domain(domain)
             .range([153, 51]);
-
-        // create the globe
-        var globe = d3.gl.globe()
-            .width(600).height(600)
-            .texture("../img/earth-blank.png")
-            .transparency(function(body){
-                return 0.96;
-            });
-        var shapes = globe.shapes("countries")
-            .data(data)
-            .id(function(d){
-                // the id returned here must match the color in the shape texture
-                // such that r*10*10 + g*10 + b = id
-                return country_code_map["alpha_code_to_country"][d["ISO_code"]]["country-code"];
-            })
-            .color(function(d){
-                var rainfall = d["rainfall"];
-                if(rainfall.length>0) {
-                    var idx = $(".selected").length ? $(".selected").attr("id") : 0;
-                    var mm = parseInt(d["rainfall"][idx]["data"]);
-                    return [sr(mm), sg(mm), sb(mm), 255];
-                }
-                return [0, 0, 0, 0];
-            });
-        d3.select("body").append("span")
-            .datum(data).call(globe);
+        data["pr"].data = datum;
+        if(++nLoaded==2) {
+            createGlobes(data);
+        }
+    });
+    d3.json("../data/tas.json", function(datum){
+        var domain = getDataDomain(datum);
+        data["tas"] = {};
+        data["tas"].sr = d3.scale.linear()
+            .domain(domain)
+            .range([255, 0]);
+        data["tas"].sg = d3.scale.linear()
+            .domain(domain)
+            .range([234, 153]);
+        data["tas"].sb = d3.scale.linear()
+            .domain(domain)
+            .range([153, 51]);
+        data["tas"].data = datum;
+        if(++nLoaded==2) {
+            createGlobes(data);
+        }
     });
 });
 
+function createGlobes(data) {
+    // create the globe
+    var globe = d3.gl.globe()
+        .width(400).height(400)
+        .texture("../img/earth-blank.png")
+        .transparency(function(body){
+            return 0.96;
+        });
 
-function loadCountryData(indicators, callback){
-    // sample url 
-    var urls = indicators.map(function(i) {
-        return "http://api.worldbank.org/countries/all/indicators/"
-            + i + "?date=2010&format=csv&per_page=500";
-    });
-    // ? d3.gl.loadAll(urls, function(data){...});
-    var countries = {};
-    var nloaded = 0;
-    for(var i = 0; i < urls.length; i++){
-        d3.csv(urls[i], function(data){
-            for(var j = 0; j < data.length; j++){
-                var id = data["Country Code"];
-                if(!countries[id]) countries[id] = 
-                    {"id":id,"name":data["Country Name"]};
-                countries[id][indicators[i]] = data["2010"];
+    var mouseoverPoint;
+    globe.shapes("countries")
+        .data(function(climateDataT) {
+            return data[climateDataT]["data"];
+        })
+        .id(function(d){
+            // the id returned here must match the color in the shape texture
+            // such that r*10*10 + g*10 + b = id
+            return country_code_map["alpha_code_to_country"][d["ISO_code"]]["country-code"];
+        })
+        .color(function(d){
+            if(d==mouseoverPoint) return [255, 153, 153, 255];
+            var values = d["monthly_data"];
+            if(values.length>0) {
+                var idx = $(".selected").length ? $(".selected").attr("id") : 0;
+                var value = parseInt(d["monthly_data"][idx]["data"]);
+                return [
+                    data[d["var"]].sr(value),
+                    data[d["var"]].sg(value),
+                    data[d["var"]].sb(value),
+                    255
+                ];
             }
-            if(++nloaded == indicators.length){
-                callback(countries);
+            return [0, 0, 0, 0];
+        })
+        .on("mousemove", function(evt) {
+            if(evt.shape) {
+                mouseoverPoint = evt.shape;
+            } else {
+                mouseoverPoint = null;
+            }
+        })
+        .on("click", function(evt) {
+            if(evt.shape) {
+                showDetails(evt, evt.shape);
+            } else {
+                $("#bubble").hide();
             }
         });
-    }
+
+    d3.select("body").selectAll("span")
+        .data(climateDataTypes)
+        .enter()
+        .append("span")
+        .call(globe);
+}
+
+function showDetails(mouseEvent, data) {
+    var name = country_code_map["alpha_code_to_country"][data["ISO_code"]]["name"];
+    var idx = $(".selected").length ? $(".selected").attr("id") : 0;
+    var value = data["monthly_data"].length==0 ? "N/A" : data["monthly_data"][idx]["data"];
+    var size = name.length > 15 ? "10pt" : "12pt";
+    var height = name.length > 15 ? 60 : 40;
+    $("#bubble").show()
+        .css("font-size", size)
+        .css("height", height + "px")
+        .css("left", mouseEvent.clientX)
+        .css("top", mouseEvent.clientY + height/3)
+        .html(name + "<br />" + value + (data["var"]=="pr" ? " mm" : " &deg;C"));
 }
 
 </script>
+<div id="bubble"></div>
 </body>
 </html>
