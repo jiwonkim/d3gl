@@ -60,7 +60,7 @@ d3.gl.globe = function(){
             },
             texShapes: {
                 type: "t",
-                value: textures.shapes
+                value: 0 
             },
             texColorLookup: {
                 type: "t",
@@ -315,8 +315,6 @@ d3.gl.globe = function(){
         var canvas = document.createElement("canvas");
         canvas.width = 128;
         canvas.height = 128;
-        gl.textures.shapes = new THREE.Texture(canvas); // transparent placeholder
-        gl.textures.shapes.needsUpdate = true;
         var texUrl = fnTex(d);
         gl.textures.base = THREE.ImageUtils.loadTexture(texUrl, null, function(){
             console.log("textures loaded");
@@ -457,20 +455,18 @@ d3.gl.globe = function(){
 
         // ImageData object for idMap
         var idMapImageData = null;
-        
-        // load status for shapes id map texture
-        var shapesTextureStatus = false;
-
         function shapes(gl, context, datum){
             if(!idMap) throw "The id map for shapes has not been defined.";
-            if(shapesTextureStatus == "loading") return;
 
             // load id map texture
-            if(!shapesTextureStatus) {
-                shapesTextureStatus = "loading";
+            if(gl.uniforms.texShapes.value==0) {
+                
+                // If in the process of loading, set flag so that texture won't load again
+                gl.uniforms.texShapes.value = 1;
+                
                 loadIdMapImageData();
-                gl.uniforms.texShapes.value = THREE.ImageUtils.loadTexture(idMap, null, function(){
-                    shapesTextureStatus = "loaded";
+                var texShapes = THREE.ImageUtils.loadTexture(idMap, null, function(){
+                    gl.uniforms.texShapes.value = texShapes;
                 });
                 return;
             }
