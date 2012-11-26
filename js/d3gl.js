@@ -549,36 +549,33 @@ d3.gl.globe = function(){
                 gl.uniforms.texShapes.value = THREE.ImageUtils.loadTexture(idMap, null, function(){
                     shapesTextureStatus = "loaded";
                 });
+                return;
             }
 
             // iterate over data elements and create data texture
             var array = fnData(datum);
             var textureHeight = 1;
-            var textureWidth = 1024;
-            var colorLookup = new Uint8Array(1024*3);
+            var textureWidth = 1024*3;
+            var colorLookup = new Uint8Array(textureWidth*4);
             
             for (var i = 0; i < array.length; i++) {
                 var id = fnId(array[i]);
-                var idx = (id - 1)*3;
-                var color = new THREE.Color(fnColor(array[i]));
+                var idx = id*4*3;
+                var color = fnColor(array[i]);
+                if(color.length<4) throw "Color function for shapes "+
+                    "does not return color of valid format [r, g, b, a]";
                 
-                colorLookup[idx] = color.r*255; // r
-                colorLookup[idx + 1] = color.g*255; // g
-                colorLookup[idx + 2] = color.b*255; // b
+                for (var j = 0; j < 3; j++) {
+                    colorLookup[idx + j*4] = color[0]; // r
+                    colorLookup[idx + j*4 + 1] = color[1]; // g
+                    colorLookup[idx + j*4 + 2] = color[2]; // b
+                    colorLookup[idx + j*4 + 3] = color[3]; // a
+                }
             }
 
-            /*
-            BUG: currently ids are off by 1
-
-            var i = 839;
-            colorLookup[i*3] = 255;
-            colorLookup[i*3 + 1] = 0;
-            colorLookup[i*3 + 2] = 0;
-
-            */
             
             // pass in data texture as uniform
-            gl.uniforms.texColorLookup.value = new THREE.DataTexture(colorLookup, textureWidth, textureHeight, THREE.RGBFormat);
+            gl.uniforms.texColorLookup.value = new THREE.DataTexture(colorLookup, textureWidth, textureHeight, THREE.RGBAFormat);
             gl.uniforms.texColorLookup.value.needsUpdate = true;
             gl.uniforms.lookupShapes.value = 1;
         }
@@ -874,6 +871,7 @@ d3.gl.globe = function(){
 "varying vec2 vUv;             // texture coordinats",
 "",
 "int colorToShapeId(vec3 rgb) {",
+//"    return int(rgb.r*10.*10.*10. + rgb.g*10.*10. + rgb.b*10.);",
 "    // first put rgb into [0, 255] scale",
 "    float r = clamp(rgb.r * 256., 0., 255.);",
 "    float g = clamp(rgb.g * 256., 0., 255.);",
@@ -889,13 +887,13 @@ d3.gl.globe = function(){
 "vec4 lookupColor(vec2 uv) {",
 "    vec4 shapeColor = texture2D(texShapes, vec2(",
 "        clamp(uv.x, 0., 1.), clamp(uv.y, 0., 1.)));",
-"    int id = colorToShapeId(shapeColor.rgb);",
-"    return texture2D(texColorLookup, vec2(float(id)/1024., 0.));",
+"    int id = 3*colorToShapeId(shapeColor.rgb) + 1;",
+"    return texture2D(texColorLookup, vec2(float(id)/3072., 0.));",
 "}",
 "",
 "void main() {",
+"    vec4 colorShape = vec4(0.);",
 "    if(lookupShapes==1) {",
-"        vec4 color = vec4(0.);",
 "        float du = 1./4000.;",
 "        float dv = 1./2000.;",
 "        float maxDistance = sqrt(8.);",
@@ -906,16 +904,13 @@ d3.gl.globe = function(){
 "                    vUv.x+dist.x,",
 "                    vUv.y+dist.y",
 "                ));",
-"                color = mix(nextColor, color,",
+"                colorShape = mix(nextColor, colorShape,",
 "                    smoothstep(0., maxDistance, length(vec2(dx, dy))));",
 "            }",
 "        }",
-"        gl_FragColor = color;",
-"        return;",
 "    }",
 "",
 "    vec4 colorBase = texture2D(texBase, vUv);",
-"    vec4 colorShape = texture2D(texShapes, vUv);",
 "    vec4 colorOverlay = texture2D(texOverlay, vUv);",
 "",
 "    gl_FragColor = mix(gl_FragColor, colorBase, 1.0);",
@@ -928,8 +923,8 @@ d3.gl.globe = function(){
     /**
      * Bar shader. Creates bar charts on the globe.
      */
-    shaders.bar = {};
-    shaders.bar.vertex = [
+    shaders.bars = {};
+    shaders.bars.vertex = [
 "attribute vec3 customColor;",
 "varying vec3 vColor;",
 "",
@@ -938,7 +933,7 @@ d3.gl.globe = function(){
 "    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1);",
 "}"
 ].join("\n");
-    shaders.bar.fragment = [
+    shaders.bars.fragment = [
 "varying vec3 vColor;",
 "",
 "void main() {",

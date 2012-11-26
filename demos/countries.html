@@ -1,12 +1,12 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>D3GL Earth</title>
+    <title>D3GL Earth Climate</title>
     <link rel="stylesheet" href="../css/demo.css" />
 </head>
 <body>
 
-<h1>Countries</h1>
+<h1>Rainfall</h1>
 <ul id="picker">
 </ul>
 
@@ -18,18 +18,19 @@
 <script type="text/javascript" src="../js/d3gl.js"></script>
 <!-- All scripts above are included here:
 <script type="text/javascript" src="../js/d3gl.min.js"></script> -->
+<script type="text/javascript" src="../data/country_code_map.js"></script>
 
-<script type="text/javascript" src="country_code_map.js"></script>
 <script type="text/javascript">
 
 var query = {};
-var indicators = ["GDP per capita", "Population", "GDP", "Population density"];
+var months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 function createControls(){
     var selected;
     d3.select("#picker").selectAll("li")
-        .data(Object.keys(indicators))
+        .data(months)
         .enter().append("li")
-            .text(function(d){ return indicators[d]; })
+            .text(function(d){ return d; })
+            .attr("id", function(d, i) { return i; })
             .on('click', function(d) { 
                 console.log(d); 
                 if(selected) $(selected).removeClass("selected");
@@ -38,35 +39,66 @@ function createControls(){
             });
 }
 
+function getDataDomain(data) {
+    var min = null, max = null;
+    data.forEach(function(elem) {
+        elem["rainfall"].forEach(function(datum) {
+            var mm = datum["data"];
+            if(!min || !max) {
+                min = max = mm;
+            } else if(mm < min) {
+                min = mm;
+            } else if(mm > max) {
+                max = mm;
+            }
+        });
+    });
+    return [min, max];
+}
+
 $(function(){
     // create the ui
     createControls();
 
-    data = [
-        {"Country Code": "BRA", "Color": "0x00ff00"},
-        {"Country Code": "USA", "Color": "0xff0000"},
-        {"Country Code": "CHN", "Color": "0x0000ff"},
-    ];
-    // the world bank has an awesome api
-    // see http://data.worldbank.org/        
-    //d3.csv("/data/worldbank/worldbank_2010.csv", function(data){
+    d3.json("../data/rainfall.json", function(data){
+        var domain = getDataDomain(data);
+        console.log(domain);
+        var sr = d3.scale.linear()
+            .domain(domain)
+            .range([255, 0]);
+        var sg = d3.scale.linear()
+            .domain(domain)
+            .range([234, 153]);
+        var sb = d3.scale.linear()
+            .domain(domain)
+            .range([153, 51]);
+
         // create the globe
         var globe = d3.gl.globe()
             .width(600).height(600)
-            .texture("../img/earth-blank.png");
+            .texture("../img/earth-blank.png")
+            .transparency(function(body){
+                return 0.96;
+            });
         var shapes = globe.shapes("countries")
             .data(data)
             .id(function(d){
                 // the id returned here must match the color in the shape texture
                 // such that r*10*10 + g*10 + b = id
-                return country_code_map["alpha_code_to_country"][d["Country Code"]]['country-code'];
+                return country_code_map["alpha_code_to_country"][d["ISO_code"]]["country-code"];
             })
             .color(function(d){
-                return d["Color"];
+                var rainfall = d["rainfall"];
+                if(rainfall.length>0) {
+                    var idx = $(".selected").length ? $(".selected").attr("id") : 0;
+                    var mm = parseInt(d["rainfall"][idx]["data"]);
+                    return [sr(mm), sg(mm), sb(mm), 255];
+                }
+                return [0, 0, 0, 0];
             });
         d3.select("body").append("span")
             .datum(data).call(globe);
-    //});
+    });
 });
 
 
