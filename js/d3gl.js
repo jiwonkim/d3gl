@@ -46,7 +46,6 @@ d3.gl.globe = function(){
     var MOUSE_SENSITIVITY = 0.15; // degrees rotated per pixel
     var ZOOM_SENSITIVITY = 0.1; // (0 = no effect, 1 = infinite)
     var MIN_ZOOM = 0.5, MAX_ZOOM = 4;
-    var COUNTRY_CODE_TEX = "../img/shape-countries.png";
 
     // *** HELPER FUNCTIONS
     function initMaterial(shaders, textures){
@@ -94,89 +93,6 @@ d3.gl.globe = function(){
 
         return material;
     };
-    var choroplethUtils = {
-        loadCountryCodeTexture: function(callback) {
-            var codes = new Image();
-            codes.onload = callback;
-            codes.src = COUNTRY_CODE_TEX;
-        },
-        countryCodeFromColor: function(r, g, b) {
-            return r*255*255 + g*255 + b;
-        },
-        colorOverlayFromCountryCode: function(code) {
-            if(code==840) return {r: 255, g: 0, b: 0};
-            return {r: 0, g: 0, b: 0};
-        },
-        highlightCountryAt: function(gl, lat, lon) {
-            var x, y;
-            x = Math.floor(this.codes.width * (lon + 180)/360);
-            y = this.codes.height - 
-                Math.floor(this.codes.height * (lat + 90)/180);
-
-            var idx, r, g, b;
-            idx = (y*this.codes.width + x)*4;
-            r = this.codesImageData.data[idx];
-            g = this.codesImageData.data[idx + 1];
-            b = this.codesImageData.data[idx + 2];
-
-            var countryCode = this.countryCodeFromColor(r, g, b);
-            gl.uniforms.country.value = countryCode;
-        },
-        storeCountryCodesImageData: function(context, pixels) {
-            context.putImageData(pixels, 0, 0);
-            choroplethUtils.codesImageData = context.getImageData(
-                0, 0, choroplethUtils.codes.width, choroplethUtils.codes.height);
-        },
-        createChoroplethTexture: function() {
-            // create hidden canvas element for image pixel manipulation
-            var canvas = document.createElement("canvas");
-            canvas.width = this.codes.width;
-            canvas.height = this.codes.height;
-
-            var context = canvas.getContext("2d"); 
-            context.drawImage(this.codes, 0, 0);
-            var pixels = context.getImageData(0, 0, canvas.width, canvas.height);
-            this.storeCountryCodesImageData(context, pixels);
-            for (var y=0; y<canvas.height; y++) {
-                for(var x=0; x<canvas.width; x++) {
-                    var r, g, b, a;
-                    var idx = (y*canvas.width + x)*4;
-
-                    r = pixels.data[idx];
-                    g = pixels.data[idx + 1];
-                    b = pixels.data[idx + 2];
-                    var countryCode = this.countryCodeFromColor(r, g, b);
-                    var colorOverlay = this.colorOverlayFromCountryCode(countryCode);
-                    pixels.data[idx] = colorOverlay.r;
-                    pixels.data[idx + 1] = colorOverlay.g;
-                    pixels.data[idx + 2] = colorOverlay.b;
-                }
-            }
-            context.putImageData(pixels, 0, 0);
-
-            // turn it into a texture
-            var texture = new THREE.Texture(canvas);
-            texture.needsUpdate = true;
-            return texture;
-        },
-        createMaterial: function(tex) {
-            var material = colorOverlayUtils.createMaterial(
-                tex,
-                this.createChoroplethTexture(),
-                {
-                    codes: {
-                        type: "t",
-                        value: THREE.ImageUtils.loadTexture(this.codes.src)
-                    },
-                    country: {
-                        type: "i",
-                        value: 0
-                    },
-                }
-            );
-            return material;
-        },
-    }
 
     // sets up a ThreeJS globe
     function initGL(gl){
