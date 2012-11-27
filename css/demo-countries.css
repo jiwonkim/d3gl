@@ -59,24 +59,24 @@ display: none;
 
 /* country displays */
 .climate-globe{
-margin: 0 0 0 53px;
+margin: 0 0 0 73px;
 }
 #climate-globe-labels {
-height:140px;
+height:80px;
 list-style-type: none;
 font-size: 24pt;
 font-weight: 500;
 }
 #climate-globe-labels div {
 position:absolute;
-padding: 20px 0 5px 125px; 
+padding: 0 0 0 125px; 
 }
 #climate-globe-labels img {
 position: relative;
 left: -20px;
 }
 #pr{
-left:60px;
+left:55px;
 }
 #tas{
 left:490px;
