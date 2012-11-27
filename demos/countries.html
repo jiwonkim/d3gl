@@ -32,7 +32,7 @@
 
 <script type="text/javascript">
 var climateDataTypes = ["pr", "tas"];
-var months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+var months = ["Jan", "Feb", "Mar", "Apr", "May", "June", "July", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 function createControls(){
     var selected, hovered, active;
@@ -41,11 +41,7 @@ function createControls(){
         .enter().append("li")
             .text(function(d){ return d; })
             .attr("id", function(d, i) {
-                // January displays by default
-                if(i==0) {
-                    $(selected = this).addClass("selected");
-                }
-                return i;
+                return d;
              })
             .on('mouseover', function(d) {
                 if(hovered) $(hovered).removeClass("hovered");
@@ -66,6 +62,8 @@ function createControls(){
                 if(selected) $(selected).removeClass("selected");
                 $(selected = this).addClass("selected");
             });
+    // jan displays by default
+    selected = $("#Jan").addClass("selected");
 }
 
 function loadData(callback) {
@@ -115,7 +113,7 @@ function createGlobes(data) {
         .width(400).height(400)
         .texture("../img/earth-blank.png")
         .transparency(function(body){
-            return 0.96;
+            return 0.7;
         });
 
     var mouseoverPoint;
@@ -132,7 +130,7 @@ function createGlobes(data) {
             if(d==mouseoverPoint) return [50, 50, 50, 255];
             var values = d["monthly_data"];
             if(values.length>0) {
-                var idx = $(".selected").length ? $(".selected").attr("id") : 0;
+                var idx = $(".selected").length ? months.indexOf($(".selected").attr("id")) : 0;
                 var value = parseInt(d["monthly_data"][idx]["data"]);
                 var color = data[d["var"]].scale(value);
                 color = color.slice(1);
@@ -168,7 +166,7 @@ function createGlobes(data) {
 
 function showDetails(mouseEvent, data) {
     var name = country_code_map["alpha_code_to_country"][data["ISO_code"]]["name"];
-    var idx = $(".selected").length ? $(".selected").attr("id") : 0;
+    var idx = $(".selected").length ? months.indexOf($(".selected").attr("id")) : 0;
     var value = data["monthly_data"].length==0 ? "N/A" : data["monthly_data"][idx]["data"];
     var size = name.length > 15 ? "10pt" : "12pt";
     var height = name.length > 15 ? 60 : 40;
