@@ -498,6 +498,7 @@ d3.gl.globe = function(){
 
         function loadIdMap(gl) {
             var map = new Image();
+            map.crossOrigin = '';
             map.src = idMapUrl;
             map.onload = function() {
                 // set the image data, for lookups (eg selection)
