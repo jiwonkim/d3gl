@@ -6,9 +6,19 @@
 </head>
 <body>
 
-<h1>Rainfall</h1>
+<h1>World Climate</h1>
 <ul id="picker">
 </ul>
+<div id="climate-globe-labels">
+    <div id="pr">
+        Precipitation <br />
+        <img src="pr_scale.png" /> 
+    </div>
+    <div id="tas">
+        Temperature <br />
+        <img src="tas_scale.png" />
+    </div>
+</div>
 
 <script type="text/javascript" src="../js/jquery-1.8.2.js"></script>
 <script type="text/javascript" src="../js/jquery.mousewheel.js"></script>
@@ -23,80 +33,81 @@
 <script type="text/javascript">
 var climateDataTypes = ["pr", "tas"];
 var months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
 function createControls(){
-    var selected;
+    var selected, hovered, active;
     d3.select("#picker").selectAll("li")
         .data(months)
         .enter().append("li")
             .text(function(d){ return d; })
-            .attr("id", function(d, i) { return i; })
+            .attr("id", function(d, i) {
+                // January displays by default
+                if(i==0) {
+                    $(selected = this).addClass("selected");
+                }
+                return i;
+             })
+            .on('mouseover', function(d) {
+                if(hovered) $(hovered).removeClass("hovered");
+                $(hovered = this).addClass("hovered");
+            })
+            .on('mouseout', function(d) {
+                $(this).removeClass("hovered");
+                hovered = null;
+            })
+            .on('mousedown', function(d) {
+                if(active) $(active).removeClass("active");
+                $(active = this).addClass("active");
+            })
+            .on('mouseup', function(d) {
+                $(this).removeClass("active");
+            })
             .on('click', function(d) { 
-                console.log(d); 
                 if(selected) $(selected).removeClass("selected");
                 $(selected = this).addClass("selected");
             });
 }
 
-function getDataDomain(data) {
-    var min = null, max = null;
-    data.forEach(function(elem) {
-        elem["monthly_data"].forEach(function(datum) {
-            var val = datum["data"];
-            if(!min || !max) {
-                min = max = val;
-            } else if(val < min) {
-                min = val;
-            } else if(val > max) {
-                max = val;
-            }
-        });
-    });
-    return [min, max];
-}
-
-$(function(){
-    // create the ui
-    createControls();
-
+function loadData(callback) {
     var data = {};
     var nLoaded = 0;
     d3.json("../data/pr.json", function(datum){
-        var domain = getDataDomain(datum);
+        var domain = [0, 100, 200, 300, 400, 500];
         data["pr"] = {};
-        data["pr"].sr = d3.scale.linear()
+        data["pr"].scale = d3.scale.linear()
             .domain(domain)
-            .range([255, 0]);
-        data["pr"].sg = d3.scale.linear()
-            .domain(domain)
-            .range([234, 153]);
-        data["pr"].sb = d3.scale.linear()
-            .domain(domain)
-            .range([153, 51]);
+            .range([
+                "#ffffff", // [-INF, 100)
+                "#00cc99", // [100, 200)
+                "#008f6b", // [200, 300)
+                "#00644b", // [300, 400)
+                "#004634"  // [400, INF]
+            ]);
         data["pr"].data = datum;
         if(++nLoaded==2) {
-            createGlobes(data);
+            callback(data);
         }
     });
     d3.json("../data/tas.json", function(datum){
-        var domain = getDataDomain(datum);
-        console.log(domain[1]);
-        domain = [-40, 0, 20, 30, 40];
         data["tas"] = {};
-        data["tas"].sr = d3.scale.linear()
-            .domain(domain)
-            .range([0, 33, 51, 255, 255]);
-        data["tas"].sg = d3.scale.linear()
-            .domain(domain)
-            .range([0, 66, 204, 204, 0]);
-        data["tas"].sb = d3.scale.linear()
-            .domain(domain)
-            .range([0, 255, 51, 51, 0]);
+        data["tas"].scale = d3.scale.quantile()
+            .domain([-40, 40])
+            .range([
+                "#000000", // [-40, -30)
+                "#000099", // [-30, -20)
+                "#0033cc", // [-20, -10)
+                "#0066ff", // [-10, 0)
+                "#0099ff", // [0, 10)
+                "#00cc66", // [10, 20)
+                "#ffcc00", // [20, 30)
+                "#ff6600"  // [30, 40]
+            ]);
         data["tas"].data = datum;
         if(++nLoaded==2) {
-            createGlobes(data);
+            callback(data);
         }
     });
-});
+}
 
 function createGlobes(data) {
     // create the globe
@@ -118,17 +129,17 @@ function createGlobes(data) {
             return country_code_map["alpha_code_to_country"][d["ISO_code"]]["country-code"];
         })
         .color(function(d){
-            if(d==mouseoverPoint) return [255, 153, 153, 255];
+            if(d==mouseoverPoint) return [50, 50, 50, 255];
             var values = d["monthly_data"];
             if(values.length>0) {
                 var idx = $(".selected").length ? $(".selected").attr("id") : 0;
                 var value = parseInt(d["monthly_data"][idx]["data"]);
-                return [
-                    data[d["var"]].sr(value),
-                    data[d["var"]].sg(value),
-                    data[d["var"]].sb(value),
-                    255
-                ];
+                var color = data[d["var"]].scale(value);
+                color = color.slice(1);
+                var sr = parseInt(color.substring(0, 2), 16);
+                var sg = parseInt(color.substring(2, 4), 16);
+                var sb = parseInt(color.substring(4), 16);
+                return [sr, sg, sb, 255];
             }
             return [0, 0, 0, 0];
         })
@@ -147,10 +158,11 @@ function createGlobes(data) {
             }
         });
 
-    d3.select("body").selectAll("span")
+    d3.select("body").selectAll(".climate-globe")
         .data(climateDataTypes)
         .enter()
         .append("span")
+        .attr("class", "climate-globe")
         .call(globe);
 }
 
@@ -167,6 +179,12 @@ function showDetails(mouseEvent, data) {
         .css("top", mouseEvent.clientY + height/3)
         .html(name + "<br />" + value + (data["var"]=="pr" ? " mm" : " &deg;C"));
 }
+
+$(function(){
+    // create the ui
+    createControls();
+    loadData(createGlobes);
+});
 
 </script>
 <div id="bubble"></div>

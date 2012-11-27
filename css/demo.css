@@ -8,19 +8,32 @@ margin:10px;
 
 /* picker goes on the left */
 #picker {
-float:left;
-width:300px;
-cursor:pointer;
-list-style-type:none;
-padding:0;
+    left: 10px;
+    top: 10px;
+    width: auto;
+    cursor:pointer;
+    list-style-type:none;
+    padding:0;
+    font-size: 14pt;
+    display: block;
+    float: none;
 }
 #picker li {
 margin:1px;
 padding:10px;
 background:#ddd;       
+float:left;
 }
 #picker li.selected {
-background:#aef;
+    background:#aef;
+}
+
+#picker li.hovered {
+    background:#BCA9F5;
+}
+
+#picker li.active {
+    background:#F3F781;
 }
 
 #bubble {
@@ -33,3 +46,25 @@ background:#aef;
     display: none;
 }
 
+.climate-globe{
+    padding: 0px 50px;
+    float: left;
+}
+
+#climate-globe-labels {
+    display: block;
+    list-style-type: none;
+    font-size: 24pt;
+    font-weight: 500;
+    float: none;
+}
+
+#climate-globe-labels div {
+    display: inline-block;
+    padding: 20px 125px 5px; 
+}
+
+#climate-globe-labels img {
+    position: relative;
+    left: -20px;
+}
