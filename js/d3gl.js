@@ -442,32 +442,35 @@ d3.gl.globe = function(){
      * * .shapes() -- color in shapes, such as countries
      * * .arcs() -- display arcs connecting points on the globe
      * * .points() -- display points, such as cities
+     * 
+     * globe.shapes(url) takes a url to a color-coded map overlay
+     * or a predefined, built-in image. currently supported:
+     * * "countries"
+     *
+     * The color-coded maps require a specific format. All datums
+     * must have integer ids between 000 and 999. The color for
+     * id ijk (base 10) is rgb(i*25.5, j*25.5, k*25.5)
      */
-    globe.shapes = function(shapesType){
+    globe.shapes = function(idMapUrl){
         var fnData = function(d){return d;};
         var fnColor, fnId;
 
-        var idMap = null; // url to texture image where colors represent shape ids
+        
         if(shapesType=="countries") {
-            idMap = "../img/country-codes.png";
+            idMapUrl = "http://
         }
 
-        // ImageData object for idMap
+        // ImageData object for idMapUrl
         var idMapImageData = null;
         function shapes(gl, context, datum){
-            if(!idMap) throw "The id map for shapes has not been defined.";
+            gl.uniforms.lookupShapes.value = 1;
 
             // load id map texture
+            if(!idMapUrl) throw "The id map for shapes has not been defined.";
             if(gl.uniforms.texShapes.value==0) {
-                
                 // If in the process of loading, set flag so that texture won't load again
                 gl.uniforms.texShapes.value = 1;
-                
-                loadIdMapImageData();
-                var texShapes = THREE.ImageUtils.loadTexture(idMap, null, function(){
-                    gl.uniforms.texShapes.value = texShapes;
-                });
-                return;
+                loadIdMap(gl);
             }
 
             // iterate over data elements and create data texture
@@ -475,14 +478,12 @@ d3.gl.globe = function(){
             var textureHeight = 1;
             var textureWidth = 1024*3;
             var colorLookup = new Uint8Array(textureWidth*4);
-            
             for (var i = 0; i < array.length; i++) {
                 var id = fnId(array[i]);
                 var idx = id*4*3;
                 var color = fnColor(array[i]);
                 if(color.length<4) throw "Color function for shapes "+
                     "does not return color of valid format [r, g, b, a]";
-                
                 for (var j = 0; j < 3; j++) {
                     colorLookup[idx + j*4] = color[0]; // r
                     colorLookup[idx + j*4 + 1] = color[1]; // g
@@ -492,22 +493,29 @@ d3.gl.globe = function(){
             }
             
             // pass in data texture as uniform
-            gl.uniforms.texColorLookup.value = new THREE.DataTexture(colorLookup, textureWidth, textureHeight, THREE.RGBAFormat);
+            gl.uniforms.texColorLookup.value = new THREE.DataTexture(
+                colorLookup, textureWidth, textureHeight, THREE.RGBAFormat);
             gl.uniforms.texColorLookup.value.needsUpdate = true;
-            gl.uniforms.lookupShapes.value = 1;
-        
-            function loadIdMapImageData() {
-                var map = new Image();
-                map.src = idMap;
-                map.onload = function() {
-                    var idCanvas = document.createElement("canvas");
-                    idCanvas.width = map.width;
-                    idCanvas.height = map.height;
-                    var idContext = idCanvas.getContext("2d");
-                    idContext.drawImage(map, 0, 0);
-                    idMapImageData = idContext.getImageData(0, 0,
-                        idCanvas.width, idCanvas.height);
-                }
+        }
+
+        function loadIdMap(gl) {
+            var map = new Image();
+            map.src = idMapUrl;
+            map.onload = function() {
+                // set the image data, for lookups (eg selection)
+                var idCanvas = document.createElement("canvas");
+                idCanvas.width = map.width;
+                idCanvas.height = map.height;
+                var idContext = idCanvas.getContext("2d");
+                idContext.drawImage(map, 0, 0);
+                idMapImageData = idContext.getImageData(0, 0,
+                    idCanvas.width, idCanvas.height);
+
+                // set the texture
+                console.log("SETTING UNIFORM PUG");
+                gl.uniforms.texShapes.value = new THREE.Texture();
+                gl.uniforms.texShapes.value.image = map;
+                gl.uniforms.texShapes.value.needsUpdate = true;
             }
         }
 
@@ -889,6 +897,7 @@ d3.gl.globe = function(){
 "    gl_FragColor = vec4(vColor, 1.0);",
 "}"
 ].join("\n");
+
 
     return globe;
 };
