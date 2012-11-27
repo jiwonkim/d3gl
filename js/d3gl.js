@@ -117,8 +117,8 @@ d3.gl.globe = function(){
         gl.textures.overlay = new THREE.Texture(canvas);
         var sphereMaterial = initMaterial(gl.shaders, gl.textures);
         var sphereMaterialBack = initMaterial(gl.shaders, gl.textures);
-        //sphereMaterial.depthTest = sphereMaterialBack.depthTest = false;
-        //sphereMaterial.depthWrite = sphereMaterialBack.depthWrite = false;
+        sphereMaterialBack.depthTest = false;
+        sphereMaterialBack.depthWrite = false;
         sphereMaterialBack.side = THREE.BackSide;
 
         // create the actual globe
@@ -357,7 +357,6 @@ d3.gl.globe = function(){
                     gl.meshes[i].rotation.y = -(rotation.lon+90)*Math.PI/180.0;
                 }
                 gl.camera.position.z = 1+zoom;
-                gl.material.side = THREE.DoubleSide;
                 gl.renderer.sortObjects = false;
                 gl.renderer.sortElements = false;
                 gl.renderer.render(gl.scene, gl.camera);
