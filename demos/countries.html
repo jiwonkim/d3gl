@@ -69,7 +69,7 @@ function createControls(){
         .html("&nbsp;")
         .on('click', function(){
             playing = !playing;
-            $(this).attr(playing ? "play pause" : "play");
+            $(this).attr("class", playing ? "play pause" : "play");
         });
     setInterval(function(){
         if(!playing) return;
@@ -177,7 +177,7 @@ function createGlobes(data) {
 
 function showDetails(mouseEvent, data) {
     var name = country_code_map["alpha_code_to_country"][data["ISO_code"]]["name"];
-    var value;
+    var value = months[monthIds]+": ";
     if(data["monthly_data"].length==0){ 
         value = "N/A";
     } else {

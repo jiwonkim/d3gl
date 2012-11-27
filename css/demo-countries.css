@@ -29,13 +29,12 @@ overflow:hidden;
 }
 #picker li.play {
 width:40px;
-background-color:white;
-background-image:url(http://dcpos.ch/d3gl/img/btn-play.png);
+background-image:url(http://dcpos.ch/d3gl/img/btn-play2.png);
 background-position:center;
 background-repeat:no-repeat;
 }
 #picker li.play.pause {
-background-image:url(http://dcpos.ch/d3gl/img/btn-play.png);
+background-image:url(http://dcpos.ch/d3gl/img/btn-pause2.png);
 }
 #picker li.selected {
 background:#aef;
