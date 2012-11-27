@@ -27,6 +27,7 @@ Examples
 --------
 * [Hello World](http://bl.ocks.org/4056536)
 * [Space Exploration](http://bl.ocks.org/4142482)
+* [Earth's Climate](https://bl.ocks.org/4153053)
 * Global Airline Routes
 
 Steps
