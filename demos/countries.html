@@ -3,10 +3,10 @@
 <head>
     <title>D3GL Earth Climate</title>
     <link rel="stylesheet" href="../css/demo.css" />
+    <link rel="stylesheet" href="../css/demo-countries.css" />
 </head>
 <body>
 
-<h1>World Climate</h1>
 <ul id="picker">
 </ul>
 <div id="climate-globe-labels">
@@ -33,9 +33,10 @@
 <script type="text/javascript">
 var climateDataTypes = ["pr", "tas"];
 var months = ["Jan", "Feb", "Mar", "Apr", "May", "June", "July", "Aug", "Sep", "Oct", "Nov", "Dec"];
+var monthIdx = 0; // jan displays by default
 
 function createControls(){
-    var selected, hovered, active;
+    var selected, hovered, active, playing = false;
     d3.select("#picker").selectAll("li")
         .data(months)
         .enter().append("li")
@@ -61,8 +62,21 @@ function createControls(){
             .on('click', function(d) { 
                 if(selected) $(selected).removeClass("selected");
                 $(selected = this).addClass("selected");
+                monthIdx = months.indexOf(selected.id);
             });
-    // jan displays by default
+    d3.select("#picker").append("li")
+        .attr("class", "play")
+        .html("&nbsp;")
+        .on('click', function(){
+            playing = !playing;
+            $(this).attr(playing ? "play pause" : "play");
+        });
+    setInterval(function(){
+        if(!playing) return;
+        monthIdx = (monthIdx+1)%12;
+        if(selected) $(selected).removeClass("selected");
+        selected = $("#"+months[monthIdx]).addClass("selected");
+    }, 50);
     selected = $("#Jan").addClass("selected");
 }
 
@@ -113,7 +127,7 @@ function createGlobes(data) {
         .width(400).height(400)
         .texture("../img/earth-blank.png")
         .transparency(function(body){
-            return 0.7;
+            return 0.6;
         });
 
     var mouseoverPoint;
@@ -130,8 +144,7 @@ function createGlobes(data) {
             if(d==mouseoverPoint) return [50, 50, 50, 255];
             var values = d["monthly_data"];
             if(values.length>0) {
-                var idx = $(".selected").length ? months.indexOf($(".selected").attr("id")) : 0;
-                var value = parseInt(d["monthly_data"][idx]["data"]);
+                var value = parseInt(d["monthly_data"][monthIdx]["data"]);
                 var color = data[d["var"]].scale(value);
                 color = color.slice(1);
                 var sr = parseInt(color.substring(0, 2), 16);
@@ -157,17 +170,20 @@ function createGlobes(data) {
         });
 
     d3.select("body").selectAll(".climate-globe")
-        .data(climateDataTypes)
-        .enter()
-        .append("span")
-        .attr("class", "climate-globe")
+        .data(climateDataTypes).enter()
+        .append("span").attr("class", "climate-globe")
         .call(globe);
 }
 
 function showDetails(mouseEvent, data) {
     var name = country_code_map["alpha_code_to_country"][data["ISO_code"]]["name"];
-    var idx = $(".selected").length ? months.indexOf($(".selected").attr("id")) : 0;
-    var value = data["monthly_data"].length==0 ? "N/A" : data["monthly_data"][idx]["data"];
+    var value;
+    if(data["monthly_data"].length==0){ 
+        value = "N/A";
+    } else {
+        value = Math.round(data["monthly_data"][monthIdx]["data"]);
+        value += data["var"]=="pr" ? " mm" : " &deg;C";
+    }
     var size = name.length > 15 ? "10pt" : "12pt";
     var height = name.length > 15 ? 60 : 40;
     $("#bubble").show()
@@ -175,7 +191,7 @@ function showDetails(mouseEvent, data) {
         .css("height", height + "px")
         .css("left", mouseEvent.clientX)
         .css("top", mouseEvent.clientY + height/3)
-        .html(name + "<br />" + value + (data["var"]=="pr" ? " mm" : " &deg;C"));
+        .html(name + "<br />" + value);
 }
 
 $(function(){

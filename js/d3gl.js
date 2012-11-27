@@ -455,10 +455,8 @@ d3.gl.globe = function(){
         var fnData = function(d){return d;};
         var fnColor, fnId;
 
-        
-        if(shapesType=="countries") {
-            idMapUrl = "http://
-        }
+        // builtins
+        if(idMapUrl=="countries") idMapUrl = "http://dcpos.ch/d3gl/img/country-codes.png";
 
         // ImageData object for idMapUrl
         var idMapImageData = null;
@@ -512,7 +510,6 @@ d3.gl.globe = function(){
                     idCanvas.width, idCanvas.height);
 
                 // set the texture
-                console.log("SETTING UNIFORM PUG");
                 gl.uniforms.texShapes.value = new THREE.Texture();
                 gl.uniforms.texShapes.value.image = map;
                 gl.uniforms.texShapes.value.needsUpdate = true;
