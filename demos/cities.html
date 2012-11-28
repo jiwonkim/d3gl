@@ -19,39 +19,31 @@
 <script type="text/javascript">
 // fake data
 var data = [
-    {lat: 37.5833, lon: 127.0000, color: "#ff0000", radius: 2, height: 0.5}, // seoul
+    {lat: 37.5833, lon: 127.0000, color: "#ff0000", radius: 2, height: 0.4}, // seoul
     {lat: 37.7750, lon: -122.4183, color: "#00ff00", radius: 2, height: 0.2}, // sf
-    {lat: 40.7142, lon: -74.0064, color: "#0000ff", radius: 4, height: 0.4}, // ny
+    {lat: 40.7142, lon: -74.0064, color: "#0000ff", radius: 4, height: 0.3}, // ny
     {lat: 31.2000, lon: 121.5000, color: "#ffff00", radius: 3, height: 1.0} // shanghai
 ];
 
 $(function(){
-    var mouseCity = {lat:0,lon:0,height:0.05,color:"#f00"};
-    data.push(mouseCity);
     var globe = d3.gl.globe()
         .width(600).height(600)
         .texture("../img/earth-blank.png")
-        .on('mousemove', function(evt){
-            if(!evt.latlon) return;
-            mouseCity.lat = evt.latlon[0];
-            mouseCity.lon = evt.latlon[1]-90;
-        });
+    
     var selectedCity = null;
     var bars = globe.bars()
         .data(data)
         .latitude(function(d){ return d.lat; })
         .longitude(function(d){ return d.lon; })
-        .height(function(d){ return d.height; })
-        .color(function(d){ return d==selectedCity ? "#fff" : d.color; });
-        
-    /*
-    var points = globe.points()
-        .data(data)
-        .latitude(function(d){ return d.lat; })
-        .longitude(function(d){ return d.lon; })
-        .radius(function(d){ return d.radius })
-        .color(function(d){ return d==selectedCity ? "#fff" : d.color; });
+        .width(0.01)
+        .height(function(d){ return 0.; })
+        .color(function(d){ return d==selectedCity ? "#fff" : d.color; })
+        .transition()
+        .ease("elastic", 1.2, 0.6)
+        .duration(2000)
+        .height(function(d){ return d.height; });
 
+    /*
     var painter = globe.paint(function(context, datum){
         context.beginPath();
         var latScale = d3.scale.linear()
