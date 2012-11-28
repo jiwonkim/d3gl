@@ -126,6 +126,8 @@ d3.gl.globe = function(){
         var geom = new THREE.SphereGeometry(radius, segments, rings);
         var sphere = new THREE.Mesh(geom, sphereMaterial);
         var sphereBack = new THREE.Mesh(geom, sphereMaterialBack);
+        sphere.orientation = new THREE.Vector3(0, 0, 0);
+        sphereBack.orientation = new THREE.Vector3(0, 0, 0);
         scene.add(sphereBack);
         scene.add(sphere);
                 
@@ -353,8 +355,8 @@ d3.gl.globe = function(){
                 
                 // draw the objects in scene
                 for(var i = 0; i < gl.meshes.length; i++) {
-                    gl.meshes[i].rotation.x = rotation.lat*Math.PI/180.0;
-                    gl.meshes[i].rotation.y = -(rotation.lon+90)*Math.PI/180.0;
+                    gl.meshes[i].rotation.x = gl.meshes[i].orientation.x + rotation.lat*Math.PI/180.0;
+                    gl.meshes[i].rotation.y = gl.meshes[i].orientation.y - (rotation.lon+90)*Math.PI/180.0;
                 }
                 gl.camera.position.z = 1+zoom;
                 gl.renderer.sortObjects = false;
@@ -703,13 +705,14 @@ d3.gl.globe = function(){
         function bars(gl, datum){
             // render the points into a texture that goes on the globe
             var array = fnData(datum);
-            var linesGeo = new THREE.Geometry();
-            var attributes = {
-                customColor: {
-                    type: "c",
-                    value: []
-                }
-            };
+            /*
+            var barMaterial = new THREE.ShaderMaterial({
+                vertexShader: shaders.bars.vertex,
+                fragmentShader: shaders.bars.fragment,
+                attributes: attributes,
+            });
+            */
+
             array.forEach(function(elem){
                 var lat = Math.PI/180*fnLat(elem);
                 var lon = Math.PI/180*(fnLon(elem) + 90);
@@ -721,26 +724,32 @@ d3.gl.globe = function(){
                 y = r*Math.sin(lat);
                 z = r*Math.cos(lat)*Math.cos(lon);
 
-                linesGeo.vertices.push(
-                    new THREE.Vector3(0, 0, 0),
-                    new THREE.Vector3(x,y,z)
+                var bar = new THREE.Mesh(
+                    new THREE.CubeGeometry(0.01, 0.01, 2.5),
+                    new THREE.MeshNormalMaterial()
                 );
+                bar.orientation = new THREE.Vector3(
+                    Math.cos(lat)*Math.cos(lon),
+                    Math.sin(lat),
+                    Math.cos(lat)*Math.sin(lon)
+                );
+                console.log(bar.orientation);
 
+                /*
                 var hex = "0x" + color.slice(1);
-                attributes.customColor.value.push(new THREE.Color(hex))
-                attributes.customColor.value.push(new THREE.Color(hex));
+                attributes.customColor.value.push()
+                var attributes = {
+                    customColor: {
+                        type: "c",
+                        value: [new THREE.Color(hex)]
+                    }
+                };
+                */
+
+                gl.scene.add(bar);
+                gl.meshes.push(bar);
             });
 
-            var lineMaterial = new THREE.ShaderMaterial({
-                vertexShader: shaders.bars.vertex,
-                fragmentShader: shaders.bars.fragment,
-                attributes: attributes,
-            });
-
-            var line = new THREE.Line(linesGeo, lineMaterial);
-            line.type = THREE.Lines;
-            gl.scene.add(line);
-            gl.meshes.push(line);
         }
 
         bars.latitude = function(val){
