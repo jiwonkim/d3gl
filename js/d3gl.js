@@ -117,8 +117,8 @@ d3.gl.globe = function(){
         gl.textures.overlay = new THREE.Texture(canvas);
         var sphereMaterial = initMaterial(gl.shaders, gl.textures);
         var sphereMaterialBack = initMaterial(gl.shaders, gl.textures);
-        sphereMaterialBack.depthTest = false;
-        sphereMaterialBack.depthWrite = false;
+        //sphereMaterialBack.depthTest = false;
+        //sphereMaterialBack.depthWrite = false;
         sphereMaterialBack.side = THREE.BackSide;
 
         // create the actual globe
@@ -155,6 +155,7 @@ d3.gl.globe = function(){
         gl.scene = scene;
         gl.camera = camera;
         gl.projector = new THREE.Projector();
+        window.gl = gl;
     }
 
     function initControls(gl, elem){
@@ -330,19 +331,18 @@ d3.gl.globe = function(){
             initStyle(gl.renderer.domElement); // <canvas> style
             gl.element.appendChild(gl.renderer.domElement);
             
-            // now render the 3D overlay
-            for(var i = 0; i < overlay3D.length; i++) {
-                overlay3D[i](gl, d);
-            }
-            
             // called 60 times per second
             function render(){
                 // update
                 fireEvent("update", null);
                 updateAnimations();
                 if(fnTransparency) gl.uniforms.transparency.value = fnTransparency(d);
-
-                // draw the texture overlay
+                // now update/create the 3D overlays
+                for(var i = 0; i < overlay3D.length; i++) {
+                    overlay3D[i](gl, d);
+                }
+            
+                // draw the 2D (texture) overlays
                 var context = gl.overlayCanvas.getContext("2d");
                 context.setTransform(1,0,0,1,0,0); // identity
                 context.width = gl.overlayCanvas.width;
@@ -355,10 +355,18 @@ d3.gl.globe = function(){
                 
                 // draw the objects in scene
                 for(var i = 0; i < gl.meshes.length; i++) {
-                    gl.meshes[i].rotation.x = gl.meshes[i].orientation.x + rotation.lat*Math.PI/180.0;
-                    gl.meshes[i].rotation.y = gl.meshes[i].orientation.y - (rotation.lon+90)*Math.PI/180.0;
+                    var m = gl.meshes[i];
+                    m.matrixAutoUpdate = false;
+                    m.matrixWorld = new THREE.Matrix4();
+                    m.matrixWorld.rotateX(rotation.lat*Math.PI/180);
+                    m.matrixWorld.rotateY(-rotation.lon*Math.PI/180);
+                    m.matrixWorld.rotateY(gl.meshes[i].orientation.y);
+                    m.matrixWorld.rotateX(gl.meshes[i].orientation.x);
+                    //m.rotation.x = rotation.lat*Math.PI/180.0;
+                    //m.rotation.y = (rotation.lon+90)*Math.PI/180.0;
                 }
                 gl.camera.position.z = 1+zoom;
+                //gl.scene.overrideMaterial = true;
                 gl.renderer.sortObjects = false;
                 gl.renderer.sortElements = false;
                 gl.renderer.render(gl.scene, gl.camera);
@@ -702,54 +710,48 @@ d3.gl.globe = function(){
         var fnData = function(d){return d;};
         var fnLat, fnLon, fnColor, fnHeight;
         var barsFs, barsVs;
+        var barObjs = {};
+        window.b = barObjs;
         function bars(gl, datum){
-            // render the points into a texture that goes on the globe
+            // reeval every bar, at 60fps
             var array = fnData(datum);
-            /*
-            var barMaterial = new THREE.ShaderMaterial({
-                vertexShader: shaders.bars.vertex,
-                fragmentShader: shaders.bars.fragment,
-                attributes: attributes,
-            });
-            */
-
             array.forEach(function(elem){
-                var lat = Math.PI/180*fnLat(elem);
-                var lon = Math.PI/180*(fnLon(elem) + 90);
+                // compute properties
+                var latRad = Math.PI/180*fnLat(elem);
+                var lonRad = Math.PI/180*(fnLon(elem) + 90);
                 var color = fnColor(elem);
                 var height = fnHeight(elem); // in units of globe radius
-                var r = height > 1 ? 2 : 1 + height;
-                var x, y, z;
-                x = r*Math.cos(lat)*Math.sin(lon);
-                y = r*Math.sin(lat);
-                z = r*Math.cos(lat)*Math.cos(lon);
+                var width = 0.02; // should be fnWidth(elem)
+                if(!(height >= 0)) throw "invalid height for .bar(): "+height;
 
-                var bar = new THREE.Mesh(
-                    new THREE.CubeGeometry(0.01, 0.01, 2.5),
-                    new THREE.MeshNormalMaterial()
-                );
-                bar.orientation = new THREE.Vector3(
-                    Math.cos(lat)*Math.cos(lon),
-                    Math.sin(lat),
-                    Math.cos(lat)*Math.sin(lon)
-                );
-                console.log(bar.orientation);
-
-                /*
-                var hex = "0x" + color.slice(1);
-                attributes.customColor.value.push()
-                var attributes = {
-                    customColor: {
-                        type: "c",
-                        value: [new THREE.Color(hex)]
-                    }
-                };
-                */
-
-                gl.scene.add(bar);
-                gl.meshes.push(bar);
+                var elemId = elem.color; // TODO: use fnId(elem)
+                var bar = barObjs[elemId]; 
+                if(!bar){
+                    console.log(["creating", elem]);
+                    // create only if neccessary
+                    bar = new THREE.Mesh(
+                        new THREE.CubeGeometry(1,1,1),
+                        new THREE.MeshLambertMaterial());
+                    barObjs[elemId] = bar;
+                    gl.scene.add(bar);
+                    gl.meshes.push(bar);
+                }
+                // update
+                var x0 = -width/2, x1 = width/2;
+                var y0 = -width/2, y1 = width/2;
+                var z0 = 1, z1 = 1+height;
+                bar.geometry.vertices[0] = new THREE.Vector3(x1,y1,z1);
+                bar.geometry.vertices[1] = new THREE.Vector3(x1,y1,z0);
+                bar.geometry.vertices[2] = new THREE.Vector3(x1,y0,z1);
+                bar.geometry.vertices[3] = new THREE.Vector3(x1,y0,z0);
+                bar.geometry.vertices[4] = new THREE.Vector3(x0,y1,z0);
+                bar.geometry.vertices[5] = new THREE.Vector3(x0,y1,z1);
+                bar.geometry.vertices[6] = new THREE.Vector3(x0,y0,z0);
+                bar.geometry.vertices[7] = new THREE.Vector3(x0,y0,z1);
+                bar.geometry.verticesNeedUpdate = true;
+                bar.material.color = color;
+                bar.orientation = new THREE.Vector3(-latRad, lonRad, 0);
             });
-
         }
 
         bars.latitude = function(val){

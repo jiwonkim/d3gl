@@ -26,9 +26,16 @@ var data = [
 ];
 
 $(function(){
+    var mouseCity = {lat:0,lon:0,height:0.05,color:"#f00"};
+    data.push(mouseCity);
     var globe = d3.gl.globe()
         .width(600).height(600)
-        .texture("../img/earth-blank.png");
+        .texture("../img/earth-blank.png")
+        .on('mousemove', function(evt){
+            if(!evt.latlon) return;
+            mouseCity.lat = evt.latlon[0];
+            mouseCity.lon = evt.latlon[1]-90;
+        });
     var selectedCity = null;
     var bars = globe.bars()
         .data(data)
@@ -59,9 +66,7 @@ $(function(){
         context.stroke();
     });
     */        
-
-    d3.select("body").append("span")
-        .datum(data).call(globe);
+d3.select("body").append("span") .datum(data).call(globe);
 });
 
 </script>
