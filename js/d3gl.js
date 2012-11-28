@@ -708,38 +708,61 @@ d3.gl.globe = function(){
 
     globe.bars = function() {
         var fnData = function(d){return d;};
-        var fnLat, fnLon, fnColor, fnHeight;
+        var fns = {};
+        var transitions = [];
         var barsFs, barsVs;
         var barObjs = {};
-        window.b = barObjs;
         function bars(gl, datum){
             // reeval every bar, at 60fps
             var array = fnData(datum);
             array.forEach(function(elem){
                 // compute properties
-                var latRad = Math.PI/180*fnLat(elem);
-                var lonRad = Math.PI/180*(fnLon(elem) + 90);
-                var color = fnColor(elem);
-                var height = fnHeight(elem); // in units of globe radius
-                var width = 0.02; // should be fnWidth(elem)
-                if(!(height >= 0)) throw "invalid height for .bar(): "+height;
+                var state =  {
+                    latRad: Math.PI/180*fns.fnLat(elem),
+                    lonRad: Math.PI/180*(fns.fnLon(elem) + 90),
+                    color: fns.fnColor(elem),
+                    height: fns.fnHeight(elem), // in units of globe radius
+                    width: fns.fnWidth(elem)
+                }
 
                 var elemId = elem.color; // TODO: use fnId(elem)
                 var bar = barObjs[elemId]; 
                 if(!bar){
-                    console.log(["creating", elem]);
                     // create only if neccessary
+                    var uniforms = {
+                        color: {
+                            type: "c",
+                            value: new THREE.Color("0x"+state.color.slice(1))
+                        }
+                    };
                     bar = new THREE.Mesh(
                         new THREE.CubeGeometry(1,1,1),
-                        new THREE.MeshLambertMaterial());
+                        new THREE.ShaderMaterial({
+                            vertexShader: shaders.bars.vertex,
+                            fragmentShader: shaders.bars.fragment,
+                            uniforms: uniforms
+                        }));
+                    bar.state = {
+                        latRad: 0,
+                        lonRad: 0,
+                        color: 0,
+                        height: 0,
+                        width: 0,
+                    };
                     barObjs[elemId] = bar;
                     gl.scene.add(bar);
                     gl.meshes.push(bar);
                 }
+
+                bar.state = state;
+                if (transitions.length > 0) {
+                    if (!bar.transitionStarted) bars.transition.start(bar);
+                    else bars.transition.update(bar, elem);
+                }
                 // update
-                var x0 = -width/2, x1 = width/2;
-                var y0 = -width/2, y1 = width/2;
-                var z0 = 1, z1 = 1+height;
+                var x0 = -bar.state.width/2, x1 = bar.state.width/2;
+                var y0 = -bar.state.width/2, y1 = bar.state.width/2;
+                var z0 = 1, z1 = 1 + bar.state.height;
                 bar.geometry.vertices[0] = new THREE.Vector3(x1,y1,z1);
                 bar.geometry.vertices[1] = new THREE.Vector3(x1,y1,z0);
                 bar.geometry.vertices[2] = new THREE.Vector3(x1,y0,z1);
@@ -749,39 +772,117 @@ d3.gl.globe = function(){
                 bar.geometry.vertices[6] = new THREE.Vector3(x0,y0,z0);
                 bar.geometry.vertices[7] = new THREE.Vector3(x0,y0,z1);
                 bar.geometry.verticesNeedUpdate = true;
-                bar.material.color = color;
-                bar.orientation = new THREE.Vector3(-latRad, lonRad, 0);
+                bar.material.color = bar.state.color;
+                bar.orientation = new THREE.Vector3(-bar.state.latRad, bar.state.lonRad, 0);
             });
         }
 
         bars.latitude = function(val){
             if(arguments.length == 0) return fnLat;
-            if(typeof val == "function") fnLat = val;
-            else fnLat = function(){return val;};
+            var fn = (typeof val == "function") ? val : function(){return val};
+            if(transitions.length>0) {
+                transitions[transitions.length-1].fnLat = fn;
+            } else {
+                fns.fnLat = fn;
+            }
             return bars;
         }
         bars.longitude = function(val){
             if(arguments.length == 0) return fnLon;
-            if(typeof val == "function") fnLon = val;
-            else fnLon = function(){return val;};
+            var fn = (typeof val == "function") ? val : function(){return val};
+            if(transitions.length>0) {
+                transitions[transitions.length-1].fnLon = fn;
+            } else {
+                fns.fnLon = fn;
+            }
             return bars;
         }
         bars.color = function(val){
             if(arguments.length == 0) return fnColor;
-            if(typeof val == "function") fnColor = val;
-            else fnColor = function(){return val;};
+            var fn = (typeof val == "function") ? val : function(){return val};
+            if(transitions.length>0) {
+                transitions[transitions.length-1].fnColor = fn;
+            } else {
+                fns.fnColor = fn;
+            }
+            return bars;
+        }
+        bars.width = function(val){
+            if(arguments.length == 0) return fnWidth;
+            var fn = (typeof val == "function") ? val : function(){return val};
+            if(transitions.length>0) {
+                transitions[transitions.length-1].fnWidth = fn;
+            } else {
+                fns.fnWidth = fn;
+            }
             return bars;
         }
         bars.height = function(val){
             if(arguments.length == 0) return fnHeight;
-            if(typeof val == "function") fnHeight = val;
-            else fnHeight = function(){return val;};
+            var fn = (typeof val == "function") ? val : function(){return val};
+            if(transitions.length>0) {
+                transitions[transitions.length-1].fnHeight = fn;
+            } else {
+                fns.fnHeight = fn;
+            }
             return bars;
         }
         bars.data = function(val){
             if(arguments.length == 0) return fnData;
             if(typeof val == "function") fnData = val;
             else fnData = function(){return val;};
+            return bars;
+        }
+        bars.transition = function() {
+            transitions.push({});
+            return bars;
+        }
+        bars.transition.start = function(bar) {
+            bar.transitionStarted = true;
+            bar.t = 0.;
+            bar.dt = 1000/(transitions[0].duration*60);
+        }
+        bars.transition.update = function(bar, elem) {
+            var target = {
+                height: transitions[0].fnHeight(elem)
+            };
+            bar.t += bar.dt;
+            if(bar.t >= 1.) {
+                bar.state.height = target.height;
+                bars.transition.end(bar);
+            } else {
+                var t;
+                if(typeof transitions[0].fnEase != 'undefined') {
+                    t = transitions[0].fnEase(bar.t);
+                } else {
+                    t = bar.t;
+                }
+                bar.state.height = bar.state.height +
+                    (target.height - bar.state.height)*t;
+            }
+        }
+        bars.transition.end = function(bar) {
+            bar.transitionStarted = false;
+            Object.keys(transitions[0]).forEach(function(fnKey) {
+                if(typeof fns[fnKey] != 'undefined') {
+                    fns[fnKey] = transitions[0][fnKey];
+                }
+            });
+            transitions = transitions.slice(1);
+            console.log(transitions);
+        }
+        bars.delay = function(val) {
+            transitions[transitions.length-1].delay = val;
+            return bars;
+        }
+        bars.duration = function(val) {
+            transitions[transitions.length-1].duration = val;
+            return bars;
+        }
+        bars.ease = function(val, param1, param2) {
+            var fn = (typeof val == "function") ? val : d3.ease(val, param1, param2);
+            transitions[transitions.length-1].fnEase = fn; 
+            console.log(transitions[transitions.length-1].fnEase);
             return bars;
         }
 
@@ -891,19 +992,16 @@ d3.gl.globe = function(){
      */
     shaders.bars = {};
     shaders.bars.vertex = [
-"attribute vec3 customColor;",
-"varying vec3 vColor;",
-"",
+//"varying vec3 vColor;",
 "void main() {",
-"    vColor = customColor;",
 "    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1);",
 "}"
 ].join("\n");
     shaders.bars.fragment = [
-"varying vec3 vColor;",
+"uniform vec3 color;",
 "",
 "void main() {",
-"    gl_FragColor = vec4(vColor, 1.0);",
+"    gl_FragColor = vec4(color, 1.0);",
 "}"
 ].join("\n");
 
