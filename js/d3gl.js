@@ -235,7 +235,6 @@ d3.gl.globe = function(){
         rot.rotateY(rlon);
         rot.rotateX(-rlat);
         point = rot.multiplyVector3(point);
-        //console.log(""+point);
         var lat = Math.asin(point.y);
         var lon = Math.atan2(point.x, point.z);
         lat = 180/Math.PI*lat;
@@ -713,6 +712,9 @@ d3.gl.globe = function(){
         var barsFs, barsVs;
         var barObjs = {};
         function bars(gl, datum){
+            // Update transition state
+            bars.transition.update();
+
             // reeval every bar, at 60fps
             var array = fnData(datum);
             array.forEach(function(elem){
@@ -754,11 +756,12 @@ d3.gl.globe = function(){
                     gl.meshes.push(bar);
                 }
 
+                // save currenet state
                 bar.state = state;
-                if (transitions.length > 0) {
-                    if (!bar.transitionStarted) bars.transition.start(bar);
-                    else bars.transition.update(bar, elem);
-                }
+
+                // update to transitioning state if applicable
+                bars.transition.updateBarState(bar, elem);
+
                 // update
                 var x0 = -bar.state.width/2, x1 = bar.state.width/2;
                 var y0 = -bar.state.width/2, y1 = bar.state.width/2;
@@ -834,45 +837,57 @@ d3.gl.globe = function(){
             return bars;
         }
         bars.transition = function() {
-            transitions.push({});
+            transitions.push({started: false});
             return bars;
         }
-        bars.transition.start = function(bar) {
-            bar.transitionStarted = true;
-            bar.t = 0.;
-            bar.dt = 1000/(transitions[0].duration*60);
+        bars.transition.update = function() {
+            if(transitions.length == 0) return;
+            var transition = transitions[0];
+            
+            // start transition by initializing transition vars
+            if(!transition.started) {
+                transition.started = true;
+                transition.t = 0.0;
+                transition.dt = 1000/(transitions[0].duration*60);
+            }
+            if(transition.delay-- > 0) return;
+            transition.t += transition.dt;
         }
-        bars.transition.update = function(bar, elem) {
-            var target = {
-                height: transitions[0].fnHeight(elem)
+        bars.transition.updateBarState = function(bar, dataElem) {
+            if(transitions.length==0) return;
+
+            var transition = transitions[0];
+            var target = { //TODO: extend to other attributes
+                height: transition.fnHeight(dataElem)
             };
-            bar.t += bar.dt;
-            if(bar.t >= 1.) {
+            if(transition.t >= 1.) {
                 bar.state.height = target.height;
                 bars.transition.end(bar);
             } else {
+                // Find appropriate t value
                 var t;
-                if(typeof transitions[0].fnEase != 'undefined') {
-                    t = transitions[0].fnEase(bar.t);
+                if(typeof transition.fnEase != 'undefined') {
+                    t = transition.fnEase(transition.t);
                 } else {
-                    t = bar.t;
+                    t = transition.t;
                 }
+
+                // update bar height; TODO: update other attributes too
                 bar.state.height = bar.state.height +
                     (target.height - bar.state.height)*t;
             }
         }
         bars.transition.end = function(bar) {
-            bar.transitionStarted = false;
             Object.keys(transitions[0]).forEach(function(fnKey) {
                 if(typeof fns[fnKey] != 'undefined') {
                     fns[fnKey] = transitions[0][fnKey];
                 }
             });
             transitions = transitions.slice(1);
-            console.log(transitions);
         }
         bars.delay = function(val) {
-            transitions[transitions.length-1].delay = val;
+            // store delay in terms of fps
+            transitions[transitions.length-1].delay = 60*val/1000;
             return bars;
         }
         bars.duration = function(val) {
@@ -882,7 +897,6 @@ d3.gl.globe = function(){
         bars.ease = function(val, param1, param2) {
             var fn = (typeof val == "function") ? val : d3.ease(val, param1, param2);
             transitions[transitions.length-1].fnEase = fn; 
-            console.log(transitions[transitions.length-1].fnEase);
             return bars;
         }
 

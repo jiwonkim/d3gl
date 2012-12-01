@@ -44,12 +44,16 @@ $(function(){
         .latitude(function(d){ return d.lat; })
         .longitude(function(d){ return d.lon; })
         .width(0.01)
-        .height(function(d){ return d.height; })
+        .height(function(d){ return 0; })
         .color(function(d){ return d==selectedCity ? "#fff" : d.color; })
         .transition()
-        .ease("elastic", 1.2, 0.6)
-        .duration(2000)
-        .height(function(d){ return d.height; });
+            //.ease("elastic", 1.2, 0.6)
+            .duration(3000)
+            .height(function(d){ return d.height; })
+        .transition()
+            .delay(3000)
+            .duration(2000)
+            .height(function(d){ return 0; });
 
     /*
     var painter = globe.paint(function(context, datum){
