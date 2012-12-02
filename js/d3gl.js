@@ -147,7 +147,10 @@ d3.gl.globe = function(){
         if(!sphere || !canvas || !sphereMaterial.uniforms || !renderer || !scene || !camera){
             throw "Initialization failed.";
         }
-        gl.meshes = [sphere,sphereBack];
+        gl.meshes = {
+            globe: [sphere,sphereBack],
+            bars: []
+        };
         gl.overlayCanvas = canvas;
         gl.material = sphereMaterial;
         gl.uniforms = sphereMaterial.uniforms;
@@ -353,17 +356,24 @@ d3.gl.globe = function(){
                 gl.textures.overlay.needsUpdate = true; // tell 3js to update
                 
                 // draw the objects in scene
+                Object.keys(gl.meshes).forEach(function(key) {
+                    var meshes = gl.meshes[key];
+                    meshes.forEach(function(m) {
+                        m.matrixAutoUpdate = false;
+                        m.matrixWorld = new THREE.Matrix4();
+                        m.matrixWorld.rotateX(rotation.lat*Math.PI/180);
+                        m.matrixWorld.rotateY(-rotation.lon*Math.PI/180);
+                        m.matrixWorld.rotateY(m.orientation.y);
+                        m.matrixWorld.rotateX(m.orientation.x);
+                        //m.rotation.x = rotation.lat*Math.PI/180.0;
+                        //m.rotation.y = (rotation.lon+90)*Math.PI/180.0;
+                    });
+                });
+                /*
                 for(var i = 0; i < gl.meshes.length; i++) {
                     var m = gl.meshes[i];
-                    m.matrixAutoUpdate = false;
-                    m.matrixWorld = new THREE.Matrix4();
-                    m.matrixWorld.rotateX(rotation.lat*Math.PI/180);
-                    m.matrixWorld.rotateY(-rotation.lon*Math.PI/180);
-                    m.matrixWorld.rotateY(gl.meshes[i].orientation.y);
-                    m.matrixWorld.rotateX(gl.meshes[i].orientation.x);
-                    //m.rotation.x = rotation.lat*Math.PI/180.0;
-                    //m.rotation.y = (rotation.lon+90)*Math.PI/180.0;
                 }
+                */
                 gl.camera.position.z = 1+zoom;
                 //gl.scene.overrideMaterial = true;
                 gl.renderer.sortObjects = false;
@@ -706,17 +716,25 @@ d3.gl.globe = function(){
     };
 
     globe.bars = function() {
-        var fnData = function(d){return d;};
-        var fns = {};
+        var identityFn = function(d) {
+            return d;
+        };
+        var fns = {
+            fnData: identityFn,
+            prevFnData: false,
+        };
         var transitions = [];
         var barsFs, barsVs;
         var barObjs = {};
         function bars(gl, datum){
+            // If user has changed data element, remove previous bars
+            removePreviousBars(gl, datum);
+
             // Update transition state
             bars.transition.update();
 
             // reeval every bar, at 60fps
-            var array = fnData(datum);
+            var array = fns.fnData(datum);
             array.forEach(function(elem){
                 // compute properties
                 var state =  {
@@ -727,7 +745,7 @@ d3.gl.globe = function(){
                     width: fns.fnWidth(elem)
                 }
 
-                var elemId = elem.color; // TODO: use fnId(elem)
+                var elemId = fns.fnId(elem);
                 var bar = barObjs[elemId]; 
                 if(!bar){
                     // create only if neccessary
@@ -753,7 +771,7 @@ d3.gl.globe = function(){
                     };
                     barObjs[elemId] = bar;
                     gl.scene.add(bar);
-                    gl.meshes.push(bar);
+                    gl.meshes.bars.push(bar);
                 }
 
                 // save currenet state
@@ -780,6 +798,16 @@ d3.gl.globe = function(){
             });
         }
 
+        bars.id = function(val) {
+            if(arguments.length == 0) return fnId;
+            var fn = (typeof val == "function") ? val : function(){return val};
+            if(transitions.length>0) {
+                transitions[transitions.length-1].fnId = fn;
+            } else {
+                fns.fnId = fn;
+            }
+            return bars;
+        }
         bars.latitude = function(val){
             if(arguments.length == 0) return fnLat;
             var fn = (typeof val == "function") ? val : function(){return val};
@@ -791,7 +819,7 @@ d3.gl.globe = function(){
             return bars;
         }
         bars.longitude = function(val){
-            if(arguments.length == 0) return fnLon;
+            if(arguments.length == 0) return fns.fnLon;
             var fn = (typeof val == "function") ? val : function(){return val};
             if(transitions.length>0) {
                 transitions[transitions.length-1].fnLon = fn;
@@ -801,7 +829,7 @@ d3.gl.globe = function(){
             return bars;
         }
         bars.color = function(val){
-            if(arguments.length == 0) return fnColor;
+            if(arguments.length == 0) return fns.fnColor;
             var fn = (typeof val == "function") ? val : function(){return val};
             if(transitions.length>0) {
                 transitions[transitions.length-1].fnColor = fn;
@@ -811,7 +839,7 @@ d3.gl.globe = function(){
             return bars;
         }
         bars.width = function(val){
-            if(arguments.length == 0) return fnWidth;
+            if(arguments.length == 0) return fns.fnWidth;
             var fn = (typeof val == "function") ? val : function(){return val};
             if(transitions.length>0) {
                 transitions[transitions.length-1].fnWidth = fn;
@@ -821,7 +849,7 @@ d3.gl.globe = function(){
             return bars;
         }
         bars.height = function(val){
-            if(arguments.length == 0) return fnHeight;
+            if(arguments.length == 0) return fns.fnHeight;
             var fn = (typeof val == "function") ? val : function(){return val};
             if(transitions.length>0) {
                 transitions[transitions.length-1].fnHeight = fn;
@@ -831,9 +859,17 @@ d3.gl.globe = function(){
             return bars;
         }
         bars.data = function(val){
-            if(arguments.length == 0) return fnData;
-            if(typeof val == "function") fnData = val;
-            else fnData = function(){return val;};
+            if(arguments.length == 0) return fns.fnData;
+            var fn = (typeof val == "function") ? val : function(){return val};
+            if(transitions.length>0) {
+                transitions[transitions.length-1].prevFnData = fns.fnData;
+                transitions[transitions.length-1].fnData = fn;
+            } else {
+                if(fns.fnData != identityFn) {
+                    fns.prevFnData = fns.fnData;
+                }
+                fns.fnData = fn;
+            }
             return bars;
         }
         bars.transition = function() {
@@ -898,6 +934,20 @@ d3.gl.globe = function(){
             var fn = (typeof val == "function") ? val : d3.ease(val, param1, param2);
             transitions[transitions.length-1].fnEase = fn; 
             return bars;
+        }
+
+        function removePreviousBars(gl, datum) {
+            if(!fns.prevFnData) return;
+            console.log(fns.prevFnData);
+            var array = fns.prevFnData(datum);
+            array.forEach(function(elem){
+                var elemId = fns.fnId(elem);
+                var bar = barObjs[elemId]; 
+                gl.scene.remove(bar);
+                delete barObjs[elemId];
+            });
+            gl.meshes.bars = [];
+            fns.prevFnData = false;
         }
 
         overlay3D.push(bars);

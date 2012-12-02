@@ -2,11 +2,54 @@
 <html>
 <head>
     <title>D3GL Space</title>
-    <link rel="stylesheet" href="../css/demo.css" />
+    <style type="text/css">
+        body {
+            background-color: #111;
+            font: 20pt "Trebuchet MS","Helvetica Neue",sans-serif;
+            color: #fff;
+        }
+        h1 {
+            margin: 30px 20px 50px;
+        }
+        ul {
+            list-style-type: none;
+            float: left;
+            margin-right: 70px;
+        }
+        li {
+            text-align: center;
+        }
+        #globe {
+        }
+        .date-picker {
+            height: 50px;
+            width: 50px;
+        }
+        #prev {
+        }
+        #next {
+        }
+        #date {
+            height: 50px;
+            width: 50px;
+            font-size: 14pt;
+            color: #fff;
+        }
+    </style>
 </head>
 <body>
 
-<h1>D3GL Space</h1>
+<h1>Earthquakes in the Past 30 Days</h1>
+<ul id="controls">
+    <li class="date-picker" id="prev">
+    </li>
+    <li id="date" month="11" day="2">
+   Dec<br>2 
+    </li>
+    <li class="date-picker" id="next">
+    </li>
+</ul>
+
 <script type="text/javascript" src="../js/jquery-1.8.2.js"></script>
 <script type="text/javascript" src="../js/jquery.mousewheel.js"></script>
 <script type="text/javascript" src="../js/d3.v2.js"></script>
@@ -17,44 +60,101 @@
 <script type="text/javascript" src="../js/d3gl.min.js"></script> -->
 
 <script type="text/javascript">
-// fake data
-var data = {
-    first: [
-        {lat: 37.5833, lon: 127.0000, color: "#ff0000", radius: 2, height: 0.4}, // seoul
-        {lat: 37.7750, lon: -122.4183, color: "#00ff00", radius: 2, height: 0.2}, // sf
-        {lat: 40.7142, lon: -74.0064, color: "#0000ff", radius: 4, height: 0.3}, // ny
-        {lat: 31.2000, lon: 121.5000, color: "#ffff00", radius: 3, height: 1.0} // shanghai
-    ],
-    second: [
-        {lat: 37.5833, lon: 127.0000, color: "#ff0000", radius: 2, height: 0.8}, // seoul
-        {lat: 37.7750, lon: -122.4183, color: "#00ff00", radius: 2, height: 0.1}, // sf
-        {lat: 40.7142, lon: -74.0064, color: "#0000ff", radius: 4, height: 0.9}, // ny
-        {lat: 31.2000, lon: 121.5000, color: "#ffff00", radius: 3, height: 0.2} // shanghai
-    ],
+
+var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function makeBars(data, colorScale, heightScale) {
+    var globe = d3.gl.globe()
+        .width(300).height(300)
+        .texture("../img/earth-gray.png")
+    
+    var month = 11;
+    var bars = globe.bars()
+        .data(function(d) { return d['all']; })
+        .id(function(d) { return d['id']; })
+        .latitude(function(d){ return d['lat']; })
+        .longitude(function(d){ return d['lon']; })
+        .width(0.01)
+        .height(function(d){ return 0; })
+        .color(function(d){
+            return colorScale(d['magnitude']);
+        })
+        .transition()
+            .ease("sin")
+            .duration(500)
+            .height(function(d){
+                return heightScale(d['magnitude']);
+            });
+
+    d3.select("body").append("div")
+        .attr("id", "globe")
+        .datum(data).call(globe);
+    return bars;
+}
+
+function switchTimePeriod(bars, month, heightScale) {
+    /*
+    bars.data(function(d) {
+        return d['2012'][month];
+    });
+    */
+    bars.transition()
+            .duration(500)
+            .height(function(d) { return -0.01; })
+            .data(function(data) { return data['2012'][month]; })
+        .transition()
+            .duration(500)
+            .height(function(d) {
+                return heightScale(d['MAGNITUDE']);
+            });
+}
+
+function initControls() {
+    $(".date-picker").click(function(evt) {
+        evt.preventDefault();
+        var display = $("#date");
+        var month = parseInt(display.attr("month"));
+        var day = parseInt(display.attr("day"));
+        var date = new Date();
+        date.setFullYear(2012, month, day);
+        if($(this).attr("id")=="next") {
+            if(month==11 && day==2) return;
+            date.setDate(date.getDate() + 1); 
+        } else {
+            if(month==10 && day==2) return;
+            date.setDate(date.getDate() - 1);
+        }
+        display.attr("month", date.getMonth());
+        display.attr("day", date.getDate());
+        display.html(months[date.getMonth()] + "<br>" + date.getDate());
+    });
+}
+
+function renderGlobe() {
+    var colorScale = d3.scale.quantile()
+        .domain([0, 3, 4, 5, 6, 7, 8, 10])
+        .range([
+            "#ddff00", // minor
+            "#fff000", // light
+            "#ffcc00", // moderate
+            "#ff5500", // strong
+            "#ff2200", // major
+            "#ff0000", // great
+        ]);
+
+    var heightScale = d3.scale.linear()
+        .domain([0, 10])
+        .range([0, 0.4]);
+
+    var data, bars;
+    $.get('../data/recent_earthquakes.json', function(d) {
+        data = d;
+        bars = makeBars(d, colorScale, heightScale);
+    });
 }
 
 $(function(){
-    var globe = d3.gl.globe()
-        .width(600).height(600)
-        .texture("../img/earth-blank.png")
-    
-    var selectedCity = null;
-    var bars = globe.bars()
-        .data(function(d) { return d.first; })
-        .latitude(function(d){ return d.lat; })
-        .longitude(function(d){ return d.lon; })
-        .width(0.01)
-        .height(function(d){ return 0; })
-        .color(function(d){ return d==selectedCity ? "#fff" : d.color; })
-        .transition()
-            //.ease("elastic", 1.2, 0.6)
-            .duration(3000)
-            .height(function(d){ return d.height; })
-        .transition()
-            .delay(3000)
-            .duration(2000)
-            .height(function(d){ return 0; });
-
+    initControls();
+    renderGlobe();
     /*
     var painter = globe.paint(function(context, datum){
         context.beginPath();
@@ -70,9 +170,10 @@ $(function(){
         context.stroke();
     });
     */        
-d3.select("body").append("span") .datum(data).call(globe);
 });
 
 </script>
+
+
 </body>
 </html>
