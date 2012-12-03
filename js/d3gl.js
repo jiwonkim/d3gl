@@ -571,7 +571,7 @@ d3.gl.globe = function(){
                 
                 // find the shape that was intersected
                 var x, y;
-                x = Math.floor(idMapImageData.width * (latlon[1] + 180)/360);
+                x = Math.floor(idMapImageData.width * (latlon[1] + 90)/360);
                 y = idMapImageData.height - 
                     Math.floor(idMapImageData.height * (latlon[0] + 90)/180);
                 
@@ -738,8 +738,8 @@ d3.gl.globe = function(){
             array.forEach(function(elem){
                 // compute properties
                 var state =  {
-                    latRad: Math.PI/180*fns.fnLat(elem),
-                    lonRad: Math.PI/180*(fns.fnLon(elem) + 90),
+                    latRad: (Math.PI/180)*fns.fnLat(elem),
+                    lonRad: (Math.PI/180)*fns.fnLon(elem) + Math.PI/2,
                     color: fns.fnColor(elem),
                     height: fns.fnHeight(elem), // in units of globe radius
                     width: fns.fnWidth(elem)
@@ -762,6 +762,7 @@ d3.gl.globe = function(){
                             fragmentShader: shaders.bars.fragment,
                             uniforms: uniforms
                         }));
+                    bar.uniforms = uniforms;
                     bar.state = {
                         latRad: 0,
                         lonRad: 0,
@@ -793,7 +794,8 @@ d3.gl.globe = function(){
                 bar.geometry.vertices[6] = new THREE.Vector3(x0,y0,z0);
                 bar.geometry.vertices[7] = new THREE.Vector3(x0,y0,z1);
                 bar.geometry.verticesNeedUpdate = true;
-                bar.material.color = bar.state.color;
+                bar.uniforms.color.value = new THREE.Color(
+                    "0x"+bar.state.color.slice(1));
                 bar.orientation = new THREE.Vector3(-bar.state.latRad, bar.state.lonRad, 0);
             });
         }
@@ -872,6 +874,37 @@ d3.gl.globe = function(){
             }
             return bars;
         }
+        bars.on = function(eventName, callback){
+            globe.on(eventName, function(evt){
+                var latlon = evt.latlon;
+                if(latlon == null) return;
+                
+                // find the point that was intersected
+                evt.bar = null;
+                var data = fns.fnData(evt.datum);
+                var mind = null;
+                for(var i = 0; i < data.length; i++){
+                    var lat = fns.fnLat(data[i], i);
+                    var lon = fns.fnLon(data[i], i);
+                    var rad = fns.fnWidth(data[i], i)/2;
+                    var dlat = lat - latlon[0];
+                    var dlon = (lon - latlon[1]) * Math.cos(lat*Math.PI/180);
+                    //TODO: Why is the following needed? Is this related to
+                    // some of the bars not being selected?!?!
+                    dlon += 90 * Math.cos(lat*Math.PI/180);
+                    var d = Math.sqrt(dlat*dlat+dlon*dlon);
+                    // within 4 degrees counts as a click
+                    if(d > Math.max(4, rad+2)) continue;
+                    if(!mind || (d < mind)){
+                        mind = d;
+                        evt.bar = data[i];
+                    }
+                }
+                callback(evt);
+            });
+            return bars;
+        }
+
         bars.transition = function() {
             transitions.push({started: false});
             return bars;

@@ -177,7 +177,7 @@ function createGlobes(data) {
 
 function showDetails(mouseEvent, data) {
     var name = country_code_map["alpha_code_to_country"][data["ISO_code"]]["name"];
-    var value = months[monthIds]+": ";
+    var value = months[monthIdx]+": ";
     if(data["monthly_data"].length==0){ 
         value = "N/A";
     } else {
