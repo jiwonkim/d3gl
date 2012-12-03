@@ -4,6 +4,7 @@
 *.swp
 *.min.js
 *.psd
+!deliverables/*.psd
 ~*
 .DS_STORE
 webgl-globe
