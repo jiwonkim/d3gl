@@ -1014,9 +1014,27 @@ d3.gl.globe = function(){
     /*
      * Free-form painting onto the globe texture.
      */
-    globe.paint = function(painter){
+    globe.painter = function(){
+        var fnData = function(d) { return d; };
+        var fnPaint;
+        function painter(gl, context, datum) {
+            fnPaint(gl, context, fnData(datum));
+        }
+        painter.paint = function(val) {
+            if(arguments.length == 0) return fnPaint;
+            if(typeof val == "function") fnPaint = val;
+            else fnPaint = function(){return val;};
+            return painter;
+        }
+        painter.data = function(val){
+            if(arguments.length == 0) return fnData;
+            if(typeof val == "function") fnData = val;
+            else fnData = function(){return val;};
+            return painter;
+        }
+        
         overlayTex.push(painter);
-        return globe;
+        return painter;
     }
 
 
