@@ -60,7 +60,7 @@ function makePath(data) {
         for(var i=0; i<datum.length; i++) {
             var concert = datum[i];
             context.lineTo(lonScale(concert.lon), latScale(concert.lat));
-            if(currentConcert && currentConcert==i) {
+            if(currentConcert!=null && currentConcert==i) {
                 if(i==datum.length-1) break;
                 var next = datum[i+1];
                 var dlon = lonScale(next.lon) - lonScale(concert.lon);
@@ -94,23 +94,12 @@ function makePath(data) {
         .longitude(function(d) { return d.lon; })
         .radius(0.3)
         .color(function(d) {
-            /*
-            if(d.venue=='The Roundhouse') {
-                if(d==selectedPoint) {
-                    console.log("selected!");
-                    return "#00f";
-                }
-            }
-            */ 
             if(selectedPoint==d) {
-                if(d.venue=='The Roundhouse') {
-                    console.log("Returning blue for roundhouse!");
-                }
-                return "#00f";
+                return "rgba(0, 0, 255, 0.5)";
             } else if(mouseoverPoint==d) {
-                return "#0f0";
+                return "rgba(0, 255, 0, 0.5)";
             } else {
-                return "#fff";
+                return "rgba(255, 255, 255, 0.5)";
             }
         })
         .strokeColor("#000")
@@ -134,11 +123,11 @@ function makePath(data) {
 
 function initControls(data) {
     $("#play").click(function(evt) {
-        if(currentConcert) return;
+        if(currentConcert!=null) return;
         currentConcert = 0;
         t = 0;
         var intervalId = setInterval(function() {
-            t += 0.1;
+            t += 0.01;
             if(t>=1) {
                 currentConcert++;
                 console.log(currentConcert);
@@ -148,7 +137,7 @@ function initControls(data) {
                 }
                 t = 0;
             }
-        }, 100);
+        }, 10);
     });
 }
 
