@@ -615,23 +615,31 @@ d3.gl.globe = function(){
     globe.points = function(){
         var fnData = function(d){return d;};
         var fnLat, fnLon, fnColor, fnRadius;
-        function drawCircle(context, plat, plon, pradius, color){
+        var fnStrokeColor, fnLineWidth;
+        fnLineWidth = 0; // default is no stroke
+        function drawCircle(context, plat, plon, pradius, color, strokeColor, lineWidth){
             context.beginPath();
             context.arc(plon, plat, pradius, 0, 2*Math.PI, false);
             context.fillStyle = color;
             context.fill();
+            context.strokeStyle = strokeColor;
+            context.lineWidth = lineWidth;
+            context.stroke();
         }
         function points(gl, context, datum){
             // render the points into a texture that goes on the globe
             var array = fnData(datum);
-            array.forEach(function(elem){
-                var lat = fnLat(elem);
-                var lon = fnLon(elem);
+            for(var i=0; i<array.length; i++) {
+                var elem = array[i];
+                var lat = parseFloat(fnLat(elem, i));
+                var lon = parseFloat(fnLon(elem, i));
                 if(lat < -90 || lat > 90 || lon < -180 || lon > 180){
                     throw "invalid lat/lon: "+lat+","+lon;
                 }
-                var color = fnColor(elem);
-                var radius = fnRadius(elem); // radius in degrees
+                var color = fnColor(elem, i);
+                var strokeColor = fnStrokeColor(elem, i);
+                var lineWidth = fnLineWidth(elem, i);
+                var radius = fnRadius(elem, i); // radius in degrees
                 if(radius <= 0) return;
                 var pradius = radius * context.width / 360.0;
                 var plat = context.height * (1-(lat + 90)/180);
@@ -642,15 +650,17 @@ d3.gl.globe = function(){
                 plon /= xscale;
                 context.save();
                 context.scale(xscale, 1.0);
+                
                 // draw it twice if on the the int'l date line to avoid clipping
                 if(plon < pradius){
-                    drawCircle(context, plat, plon + context.width/xscale, pradius, color);
+                    drawCircle(context, plat, plon + context.width/xscale, pradius, color, strokeColor, lineWidth);
                 } else if(plon > context.width/xscale-pradius){
-                    drawCircle(context, plat, plon - context.width/xscale, pradius, color);
+                    console.log(strokeColor);
+                    drawCircle(context, plat, plon - context.width/xscale, pradius, color, strokeColor, lineWidth);
                 }
-                drawCircle(context, plat, plon, pradius, color);
+                drawCircle(context, plat, plon, pradius, color, strokeColor, lineWidth);
                 context.restore();
-            });
+            }
         }
 
         points.latitude = function(val){
@@ -669,6 +679,18 @@ d3.gl.globe = function(){
             if(arguments.length == 0) return fnColor;
             if(typeof val == "function") fnColor = val;
             else fnColor = function(){return val;};
+            return points;
+        }
+        points.strokeColor = function(val){
+            if(arguments.length == 0) return fnStrokeColor;
+            if(typeof val == "function") fnStrokeColor = val;
+            else fnStrokeColor = function(){return val;};
+            return points;
+        }
+        points.lineWidth = function(val){
+            if(arguments.length == 0) return fnLineWidth;
+            if(typeof val == "function") fnLineWidth = val;
+            else fnLineWidth = function(){return val;};
             return points;
         }
         points.radius = function(val){
@@ -693,14 +715,16 @@ d3.gl.globe = function(){
                 var data = fnData(evt.datum);
                 var mind = null;
                 for(var i = 0; i < data.length; i++){
-                    var lat = fnLat(data[i], i);
-                    var lon = fnLon(data[i], i);
-                    var rad = fnRadius(data[i], i);
+                    var lat = parseFloat(fnLat(data[i], i));
+                    var lon = parseFloat(fnLon(data[i], i));
+                    var rad = parseFloat(fnRadius(data[i], i));
                     var dlat = lat - latlon[0];
                     var dlon = (lon - latlon[1]) * Math.cos(lat*Math.PI/180);
+                    //TODO: ?!?!?! wft?
+                    dlon += 90 * Math.cos(lat*Math.PI/180);
                     var d = Math.sqrt(dlat*dlat+dlon*dlon);
-                    // within 4 degrees counts as a click
-                    if(d > Math.max(4, rad+2)) continue;
+                    // within 2 degrees counts as a click
+                    if(d > Math.max(2, rad+2)) continue;
                     if(!mind || (d < mind)){
                         mind = d;
                         evt.point = data[i];

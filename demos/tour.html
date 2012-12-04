@@ -4,9 +4,20 @@
 <title>D3GL Muse Tour</title>
 <style type="text/css">
     body {
-        background: url('../img/darkcreampaper.png');
         font: 20pt "Trebuchet MS","Helvetica Neue",sans-serif;
+    }
+    #speech-bubble {
+        width: 500px;
+        height: 50px;
+        font-size: 14pt;
+        background: #222;
         color: #fff;
+        margin-bottom: 20px;
+    }
+    #speech-bubble p {
+        display: inline-block;
+        width: 450px;
+        margin: 0;
     }
 </style>
 </head>
@@ -22,38 +33,136 @@
 <script type="text/javascript" src="../js/d3gl.min.js"></script> -->
 
 <script type="text/javascript">
+var currentConcert = null;
+var t = 0;
+
+function showDetails(d) {
+    $("#speech-bubble p").html(
+        (d.venue=="" ? "" : d.venue + ", ") + d.city + ", " + d.country + '<br>' +
+        d.day + " " + d.month.toLowerCase() + " " + d.year
+    );
+}
 
 function makePath(data) {
     var globe = d3.gl.globe()
         .width(500).height(500)
-        .texture("../img/oldmap.png");
+        .texture("../img/earth-simplemap.png");
     
-    var painter = globe.paint(function(gl, context, datum){
+    globe.paint(function(gl, context, datum){
         context.beginPath();
         var latScale = d3.scale.linear()
             .domain([-90,90]).range([context.height,0]);
         var lonScale = d3.scale.linear()
             .domain([-180,180]).range([0,context.width]);
         
-        data.forEach(function(concert){
+        var endLon = null;
+        var endLat = null;
+        for(var i=0; i<datum.length; i++) {
+            var concert = datum[i];
             context.lineTo(lonScale(concert.lon), latScale(concert.lat));
-        });
-
-        context.lineWidth = 5;
+            if(currentConcert && currentConcert==i) {
+                if(i==datum.length-1) break;
+                var next = datum[i+1];
+                var dlon = lonScale(next.lon) - lonScale(concert.lon);
+                var dlat = latScale(next.lat) - latScale(concert.lat);
+                endLon = lonScale(concert.lon) + dlon*t;
+                endLat = latScale(concert.lat) + dlat*t;
+                context.lineTo(endLon, endLat);
+                break;
+            }
+        }
+        
+        context.lineWidth = 4;
         context.strokeStyle= "#f00";
         context.stroke();
+        context.closePath();
+        
+        if(endLon && endLat) {
+            context.beginPath();
+            context.arc(endLon, endLat, 5, 0, 2*Math.PI, false);
+            context.fillStyle = "#0ff";
+            context.fill();
+            context.closePath();
+        }
     });
-    
+
+    var mouseoverPoint = null;
+    var selectedPoint = null;
+    globe.points()
+        .data(function(d) { return d; })
+        .latitude(function(d) { return d.lat; }) 
+        .longitude(function(d) { return d.lon; })
+        .radius(0.3)
+        .color(function(d) {
+            /*
+            if(d.venue=='The Roundhouse') {
+                if(d==selectedPoint) {
+                    console.log("selected!");
+                    return "#00f";
+                }
+            }
+            */ 
+            if(selectedPoint==d) {
+                if(d.venue=='The Roundhouse') {
+                    console.log("Returning blue for roundhouse!");
+                }
+                return "#00f";
+            } else if(mouseoverPoint==d) {
+                return "#0f0";
+            } else {
+                return "#fff";
+            }
+        })
+        .strokeColor("#000")
+        .lineWidth(2)
+        .on('mousemove', function(evt) {
+            mouseoverPoint = evt.point;
+        })
+        .on('click', function(evt) {
+            if(evt.point) {
+                selectedPoint = evt.point;
+                showDetails(evt.point);
+            } else {
+                selectedPoint = null;
+            }
+        });
+
     d3.select("body").append("div")
         .attr("id", "globe")
         .datum(data).call(globe);
 }
 
+function initControls(data) {
+    $("#play").click(function(evt) {
+        if(currentConcert) return;
+        currentConcert = 0;
+        t = 0;
+        var intervalId = setInterval(function() {
+            t += 0.1;
+            if(t>=1) {
+                currentConcert++;
+                console.log(currentConcert);
+                if(currentConcert >= data.length) {
+                    currentConcert = null; 
+                    clearInterval(intervalId);
+                }
+                t = 0;
+            }
+        }, 100);
+    });
+}
+
 $(function(){
     $.get('../data/muse_tour_2012.json', function(data) {
         makePath(data);
+        initControls(data);
     });
 });
 </script>
+
+<div id="speech-bubble">
+<p></p>
+<button id="play">Play</button>
+</div>
 </body>
 </html>
