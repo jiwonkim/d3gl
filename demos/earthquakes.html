@@ -145,7 +145,7 @@ function makeBars(data, colorScale, heightScale) {
         })
         .transition()
             .ease("sin")
-            .duration(500)
+            .duration(30) // 30 frames
             .height(function(d){
                 return heightScale(d['magnitude']);
             });
@@ -166,11 +166,11 @@ function switchTimePeriod(bars, month, day, heightScale) {
        }
     }
     bars.transition()
-            .duration(500)
+            .duration(30)
             .height(function(d) { return 0; })
             .data(dataFn)
         .transition()
-            .duration(500)
+            .duration(30)
             .height(function(d) {
                 return heightScale(d['magnitude']);
             });

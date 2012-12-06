@@ -941,9 +941,8 @@ d3.gl.globe = function(){
             if(!transition.started) {
                 transition.started = true;
                 transition.t = 0.0;
-                transition.dt = 1000/(transitions[0].duration*60);
+                transition.dt = 1/transitions[0].duration;
             }
-            //TODO: delay should be in unites of milliseconds, not frames
             if(transition.delay-- > 0) return;
             transition.t += transition.dt;
         }
