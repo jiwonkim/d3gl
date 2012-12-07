@@ -241,7 +241,7 @@ d3.gl.globe = function(){
         var lat = Math.asin(point.y);
         var lon = Math.atan2(point.x, point.z);
         lat = 180/Math.PI*lat;
-        lon = 180/Math.PI*lon;
+        lon = 180/Math.PI*lon - 90;
         while(lon < -180) lon += 360;
         while(lon > 180) lon -= 360;
         while(lat < -90) lat += 360;
@@ -365,8 +365,6 @@ d3.gl.globe = function(){
                         m.matrixWorld.rotateY(-rotation.lon*Math.PI/180);
                         m.matrixWorld.rotateY(m.orientation.y);
                         m.matrixWorld.rotateX(m.orientation.x);
-                        //m.rotation.x = rotation.lat*Math.PI/180.0;
-                        //m.rotation.y = (rotation.lon+90)*Math.PI/180.0;
                     });
                 });
                 /*
@@ -571,7 +569,7 @@ d3.gl.globe = function(){
                 
                 // find the shape that was intersected
                 var x, y;
-                x = Math.floor(idMapImageData.width * (latlon[1] + 90)/360);
+                x = Math.floor(idMapImageData.width * (latlon[1] + 180)/360);
                 y = idMapImageData.height - 
                     Math.floor(idMapImageData.height * (latlon[0] + 90)/180);
                 
@@ -615,8 +613,8 @@ d3.gl.globe = function(){
     globe.points = function(){
         var fnData = function(d){return d;};
         var fnLat, fnLon, fnColor, fnRadius;
-        var fnStrokeColor, fnLineWidth;
-        fnLineWidth = 0; // default is no stroke
+        var fnStrokeColor = function(){return "#000";};
+        var fnLineWidth = function(){return 0;}; // default = no stroke
         function drawCircle(context, plat, plon, pradius, color, strokeColor, lineWidth){
             context.beginPath();
             context.arc(plon, plat, pradius, 0, 2*Math.PI, false);
@@ -720,8 +718,6 @@ d3.gl.globe = function(){
                     var rad = parseFloat(fnRadius(data[i], i));
                     var dlat = lat - latlon[0];
                     var dlon = (lon - latlon[1]) * Math.cos(lat*Math.PI/180);
-                    //TODO: ?!?!?! wft?
-                    dlon += 90 * Math.cos(lat*Math.PI/180);
                     var d = Math.sqrt(dlat*dlat+dlon*dlon);
                     // within 2 degrees counts as a click
                     if(d > Math.max(2, rad+2)) continue;
