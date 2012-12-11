@@ -180,7 +180,8 @@ d3.gl.globe = function(){
         }
         gl.meshes = {
             globe: [sphere,sphereBack],
-            bars: []
+            bars: [],
+            arcs: []
         };
         gl.overlayCanvas = canvas;
         gl.material = sphereMaterial;
@@ -1041,6 +1042,92 @@ d3.gl.globe = function(){
         overlay3D.push(bars);
         return bars;
     };
+
+
+
+
+
+    /**
+     * ARCS
+     */
+    globe.arcs = function(){
+        var fnData, fnId;
+        fnData = fnId = function(d){return d;};
+        var fnStart, fnEnd;
+        var fnApex; // apex height, in globe radii
+        var fnLineWidth;
+
+        var arcObjs = {};
+        function arcs(gl, datum){
+            // reeval every arc, at 60fps
+            var array = fnData(datum);
+            array.forEach(function(elem){
+                var elemId = fnId(elem);
+                var arc = arcObjs[elemId]; 
+                if(arc) return; // only create if necessary
+
+                var llS = fnStart(elem);
+                var llE = fnEnd(elem);
+                var apex = fnApex(elem);
+                var npoints = 100;
+                var arcGeom = new THREE.Geometry();
+                for(var i = 0; i < npoints; i++){
+                    var t = i/(npoints-1);
+                    var lat = (llS[0]*(1-t) + llE[0]*t)*Math.PI/180;
+                    var lon = (llS[1]*(1-t) + llE[1]*t)*Math.PI/180;
+                    var x = Math.cos(lon)*Math.cos(lat);
+                    var z = Math.sin(lon)*Math.cos(lat);
+                    var y = Math.sin(lat);
+                    var radius = t*(1-t)*apex*4 + 1;
+                    x *= radius; y *= radius; z *= radius;
+                    console.log([x,y,z]);
+                    arcGeom.vertices.push(new THREE.Vector3(x,y,z));
+                }
+                var arcMaterial = 
+                    new THREE.LineBasicMaterial({color:0xff0000});
+                arc = new THREE.Line(arcGeom, arcMaterial);
+                arc.orientation = {x:0,z:0};
+                arcObjs[elemId] = arc;
+                gl.scene.add(arc);
+                gl.meshes.arcs.push(arc);
+            });
+        }
+        arcs.data = function(data){
+            if(!arguments.length)return fnData;
+            if(typeof(data)==="function") fnData = data;
+            else fnData = function(){return data;}
+            return arcs;
+        }
+        arcs.start = function(startLatLon){
+            if(!arguments.length) return fnStart;
+            if(typeof(startLatLon)==="function") fnStart = startLatLon;
+            else fnStart = function(){return startLatLon;}
+            return arcs;
+        }
+        arcs.end = function(endLatLon){
+            if(!arguments.length) return fnEnd;
+            if(typeof(endLatLon)==="function") fnEnd = endLatLon;
+            else fnEnd = function(){return endLatLon;}
+            return arcs;
+        }
+        arcs.apex = function(apex){
+            if(!arguments.length) return fnApex;
+            if(typeof(apex)==="function") fnApex = apex;
+            else fnApex = function(){return apex;}
+            return arcs;
+        }
+        arcs.lineWidth = function(lineWidth){
+            if(!arguments.length) return fnLineWidth;
+            if(typeof(lineWidth)==="function") fnLineWidth = lineWidth;
+            else fnLineWidth = function(){return lineWidth;}
+            return arcs;
+        }
+
+        overlay3D.push(arcs);
+        return arcs;
+    }
+
+
     
     /*
      * Free-form painting onto the globe texture.
