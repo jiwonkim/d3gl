@@ -104,7 +104,7 @@ d3.gl.globe = function(){
            },
            atmosphereColor: {
                type: "c",
-               value: new THREE.Color('0x'+gl.atmosphere.slice(1)),
+               value: gl.atmosphere ? new THREE.Color('0x'+gl.atmosphere.slice(1)) : 0,
            }
         };
         var atmosphereMaterial = new THREE.ShaderMaterial({
@@ -487,7 +487,7 @@ d3.gl.globe = function(){
 
         anim.rotation = {
             start:rotation,
-            end:{"lat":latlon[0],"lon":latlon[1]},
+            end:{"lat":latlon[0],"lon":latlon[1] + 90},
             startTime:new Date().getTime(),
             duration:ms
         };
