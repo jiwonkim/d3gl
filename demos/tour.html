@@ -151,16 +151,21 @@ function makePath(data) {
 }
 
 function initControls(data, globe) {
+    var intervalId;
+    $("select").change(function(evt) {
+        currentConcert = null;
+        clearInterval(intervalId);
+    });
     $("#play").click(function(evt) {
         if(currentConcert!=null) return;
         currentConcert = 0;
         t = 0;
-        var intervalId = setInterval(function() {
+        intervalId = setInterval(function() {
             t += 0.01;
             if(t>=1) {
                 currentConcert++;
                 if(!selectedPoint) {
-                    showDetails(data[currentConcert]);
+                    showDetails(data[$("select#year").val()][currentConcert]);
                 }
                 if(currentConcert >= data.length) {
                     currentConcert = null; 
@@ -184,7 +189,7 @@ $(function(){
             data[key] = data[key].reverse();
         }
         var globe = makePath(data);
-        initControls(data[$("select#year").val()], globe);
+        initControls(data, globe);
     });
 });
 </script>

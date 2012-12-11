@@ -909,9 +909,6 @@ d3.gl.globe = function(){
                     var rad = fns.fnWidth(data[i], i)/2;
                     var dlat = lat - latlon[0];
                     var dlon = (lon - latlon[1]) * Math.cos(lat*Math.PI/180);
-                    //TODO: Why is the following needed? Is this related to
-                    // some of the bars not being selected?!?!
-                    dlon += 90 * Math.cos(lat*Math.PI/180);
                     var d = Math.sqrt(dlat*dlat+dlon*dlon);
                     // within 4 degrees counts as a click
                     if(d > Math.max(4, rad+2)) continue;
