@@ -17,6 +17,9 @@ d3.gl.globe = function(){
     var height = 400;
     // callbacks (globe-level. see shapes(), points(), etc)
     var fnTex, fnTransparency;
+    // atmosphere is turned off by default
+    var fnAtmosphere = function(d) { return false; };
+    var fnAtmosphereColor = function(d) { return "#ffffff"; };
     // event handlers
     var eventHandlers = {
         /* mouse handlers */
@@ -94,6 +97,27 @@ d3.gl.globe = function(){
         return material;
     };
 
+    function initAtmosphereMaterial(gl) {
+        var uniforms = {
+           atmosphere: {
+               type: "i",
+               value: gl.atmosphere ? 1 : 0
+           },
+           atmosphereColor: {
+               type: "c",
+               value: gl.atmosphereColor,
+           }
+        };
+        var atmosphereMaterial = new THREE.ShaderMaterial({
+            vertexShader: shaders.atmosphere.vertex,
+            fragmentShader: shaders.atmosphere.fragment,
+            uniforms: uniforms,
+            transparent: true,
+            side: THREE.BackSide
+        });
+        return atmosphereMaterial;
+    }
+
     // sets up a ThreeJS globe
     function initGL(gl){
         var scene = new THREE.Scene();
@@ -130,7 +154,15 @@ d3.gl.globe = function(){
         sphereBack.orientation = new THREE.Vector3(0, 0, 0);
         scene.add(sphereBack);
         scene.add(sphere);
-                
+
+        // TODO: atmospheric effect
+        var atmosphereMaterial = initAtmosphereMaterial(gl);
+        var atmosphere = new THREE.Mesh(geom, atmosphereMaterial);
+        atmosphere.scale.x = 1.1;
+        atmosphere.scale.y = 1.1;
+        atmosphere.scale.z = 1.1;
+        scene.add(atmosphere);
+
         // add a point light
         var pointLight = new THREE.PointLight( 0xFFFFFF );
         pointLight.position.x = 1;
@@ -325,6 +357,8 @@ d3.gl.globe = function(){
             console.log("textures loaded");
             start();
         });
+        gl.atmosphere = fnAtmosphere(d);
+        gl.atmosphereColor = new THREE.Color('0x'+fnAtmosphereColor(d).slice(1));
 
         function start() {
             // 3js state
@@ -1124,7 +1158,6 @@ d3.gl.globe = function(){
      */
     shaders.bars = {};
     shaders.bars.vertex = [
-//"varying vec3 vColor;",
 "void main() {",
 "    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1);",
 "}"
@@ -1136,7 +1169,32 @@ d3.gl.globe = function(){
 "    gl_FragColor = vec4(color, 1.0);",
 "}"
 ].join("\n");
-
+    
+    /**
+     * Shader for atmospheric effect
+     */
+    shaders.atmosphere = {};
+    shaders.atmosphere.vertex = [
+"varying vec3 vNormal;",
+"void main() {",
+"   vNormal = normalize(normalMatrix * normal);",
+"   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1);",
+"}"
+].join("\n");
+    shaders.atmosphere.fragment = [
+"uniform int atmosphere;",
+"uniform vec3 atmosphereColor;", 
+"varying vec3 vNormal;",
+"void main() {",
+"   if(atmosphere==0) {",
+"       gl_FragColor = vec4(0);",
+"       return;",
+"   }",
+"   float halo = 0.2-vNormal.z;",
+"   halo *= halo;",
+"   gl_FragColor = vec4(atmosphereColor,halo);",
+"}"
+].join("\n");
 
     return globe;
 };
