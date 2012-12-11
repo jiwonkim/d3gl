@@ -19,7 +19,6 @@ d3.gl.globe = function(){
     var fnTex, fnTransparency;
     // atmosphere is turned off by default
     var fnAtmosphere = function(d) { return false; };
-    var fnAtmosphereColor = function(d) { return "#ffffff"; };
     // event handlers
     var eventHandlers = {
         /* mouse handlers */
@@ -99,13 +98,13 @@ d3.gl.globe = function(){
 
     function initAtmosphereMaterial(gl) {
         var uniforms = {
-           atmosphere: {
+           atmosphereFlag: {
                type: "i",
                value: gl.atmosphere ? 1 : 0
            },
            atmosphereColor: {
                type: "c",
-               value: gl.atmosphereColor,
+               value: new THREE.Color('0x'+gl.atmosphere.slice(1)),
            }
         };
         var atmosphereMaterial = new THREE.ShaderMaterial({
@@ -358,7 +357,6 @@ d3.gl.globe = function(){
             start();
         });
         gl.atmosphere = fnAtmosphere(d);
-        gl.atmosphereColor = new THREE.Color('0x'+fnAtmosphereColor(d).slice(1));
 
         function start() {
             // 3js state
@@ -451,6 +449,12 @@ d3.gl.globe = function(){
         if(!arguments.length) return fnTransparency;  
         if(typeof val === "function") fnTransparency = val;
         else fnTransparency = function(){return val;}
+        return globe;
+    }
+    globe.atmosphere = function(val) {
+        if(!arguments.length) return fnAtmosphere;
+        if(typeof val === "function") fnAtmosphere = val;
+        else fnAtmosphere = function(){return val;}
         return globe;
     }
     globe.on = function(eventName, callback){
@@ -1182,11 +1186,11 @@ d3.gl.globe = function(){
 "}"
 ].join("\n");
     shaders.atmosphere.fragment = [
-"uniform int atmosphere;",
+"uniform int atmosphereFlag;",
 "uniform vec3 atmosphereColor;", 
 "varying vec3 vNormal;",
 "void main() {",
-"   if(atmosphere==0) {",
+"   if(atmosphereFlag==0) {",
 "       gl_FragColor = vec4(0);",
 "       return;",
 "   }",
