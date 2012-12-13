@@ -1,5 +1,5 @@
 <!DOCTYPE html> <html> <head>
-    <title>D3GL Earthquakes</title>
+    <title>Earthquakes</title>
     <style type="text/css">
         body {
             background: url('../img/darkcreampaper.png');
@@ -228,7 +228,7 @@ function initControls(bars, heightScale) {
 
 function start(colorScale, heightScale, callback) {
     var data, bars;
-    $.get('../data/recent_earthquakes.json', function(d) {
+    $.getJSON('../data/recent_earthquakes.json', function(d) {
         data = d;
         bars = makeBars(d, colorScale, heightScale);
         callback(bars, heightScale); 
