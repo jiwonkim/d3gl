@@ -154,7 +154,7 @@ d3.gl.globe = function(){
         scene.add(sphereBack);
         scene.add(sphere);
 
-        // TODO: atmospheric effect
+        // atmospheric effects
         var atmosphereMaterial = initAtmosphereMaterial(gl);
         var atmosphere = new THREE.Mesh(geom, atmosphereMaterial);
         atmosphere.scale.x = 1.1;
@@ -219,11 +219,24 @@ d3.gl.globe = function(){
         }).dblclick(function(evt){
             fireMouseEvent("dblclick", gl, evt);
         }).mousewheel(function(evt, delta, dx, dy){
-            zoom *= Math.pow(1-ZOOM_SENSITIVITY, dy);
-            zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
+            zoomUpdate(Math.pow(1-ZOOM_SENSITIVITY, dy));
             evt.preventDefault();
         });
 
+        $(document).keydown(function(evt){
+            var key = String.fromCharCode(evt.which).toLowerCase();
+            if(key=="w") zoomUpdate(1/1.2); // zoom in
+            else if(key=="s") zoomUpdate(1.2); // zoom out
+            else if(key=="a") rotation.lon -= 10;
+            else if(key=="d") rotation.lon += 10;
+            else return;
+            evt.preventDefault();
+        });
+
+        function zoomUpdate(z){
+            zoom *= z;
+            zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
+        }
         function dragUpdate(evt){
             rotation.lon -= (evt.pageX - dragStart[0])*MOUSE_SENSITIVITY*zoom;
             rotation.lat += (evt.pageY - dragStart[1])*MOUSE_SENSITIVITY*zoom;
@@ -692,7 +705,6 @@ d3.gl.globe = function(){
                 if(plon < pradius){
                     drawCircle(context, plat, plon + context.width/xscale, pradius, color, strokeColor, lineWidth);
                 } else if(plon > context.width/xscale-pradius){
-                    console.log(strokeColor);
                     drawCircle(context, plat, plon - context.width/xscale, pradius, color, strokeColor, lineWidth);
                 }
                 drawCircle(context, plat, plon, pradius, color, strokeColor, lineWidth);
@@ -1027,7 +1039,6 @@ d3.gl.globe = function(){
 
         function removePreviousBars(gl, datum) {
             if(!fns.prevFnData) return;
-            console.log(fns.prevFnData);
             var array = fns.prevFnData(datum);
             array.forEach(function(elem){
                 var elemId = fns.fnId(elem);
@@ -1051,46 +1062,97 @@ d3.gl.globe = function(){
      * ARCS
      */
     globe.arcs = function(){
-        var fnData, fnId;
-        fnData = fnId = function(d){return d;};
-        var fnStart, fnEnd;
-        var fnApex; // apex height, in globe radii
-        var fnLineWidth;
+        var fnData = function(globeDatum){return globeDatum;};
+
+        var fnId = function(d,i){return i;};
+        var fnStart, fnEnd; // required arguments: start/end lat lon
+        var fnApex = function(){return 0.05}; // apex height, in globe radii
+        var fnLineWidth = function(){return 1}; // line thickness, in degrees
+        var fnOpacity = function(){return 1};
+        var fnPartialArc = function(){return 1}; // less than 1 to end arc midway
+        var fnColor = function(){return 0x000000};
 
         var arcObjs = {};
         function arcs(gl, datum){
             // reeval every arc, at 60fps
             var array = fnData(datum);
-            array.forEach(function(elem){
-                var elemId = fnId(elem);
+            var elemIds = []
+            array.forEach(function(elem, ix){
+                var elemId = fnId(elem, ix);
+                elemIds.push(elemId);
                 var arc = arcObjs[elemId]; 
-                if(arc) return; // only create if necessary
+                if(!arc){ 
+                    // enter 
+                    arc = new THREE.Line(new THREE.Geometry(), new THREE.LineBasicMaterial());
+                    arcObjs[elemId] = arc;
+                    arc.orientation = {x:0,y:0,z:0};
+                    gl.scene.add(arc);
+                    gl.meshes.arcs.push(arc);
+                }
 
+                // compute the great circle (shortest path)
                 var llS = fnStart(elem);
                 var llE = fnEnd(elem);
-                var apex = fnApex(elem);
+                var latS = llS[0]*Math.PI/180, lonS = llS[1]*Math.PI/180;
+                var latE = llE[0]*Math.PI/180, lonE = llE[1]*Math.PI/180;
+                var vS = new THREE.Vector3(
+                    Math.cos(latS)*Math.cos(lonS),
+                    Math.sin(latS),
+                    -Math.cos(latS)*Math.sin(lonS));
+                var vE = new THREE.Vector3(
+                    Math.cos(latE)*Math.cos(lonE),
+                    Math.sin(latE),
+                    -Math.cos(latE)*Math.sin(lonE));
+                //console.log("WAT? "+vS.x+","+vS.y+","+vS.z+","+vE.x+","+vE.y+","+vE.z);
+                var vAxis = new THREE.Vector3().cross(vS, vE);
+                var theta = vS.angleTo(vE);
                 var npoints = 100;
-                var arcGeom = new THREE.Geometry();
+                var partialArc = fnPartialArc(elem,ix);
+                var matA = new THREE.Matrix4().rotateByAxis(vAxis, theta*partialArc/npoints);
+                var matB = new THREE.Matrix4().rotateByAxis(vAxis, -theta*partialArc/npoints);
+                var mat;
+                if(matA.multiplyVector3(new THREE.Vector3().copy(vS)).distanceTo(vE) <
+                   matB.multiplyVector3(new THREE.Vector3().copy(vS)).distanceTo(vE)){
+                    mat = matA;
+                } else {
+                    mat = matB;
+                }
+                
+                // update the line geometry
+                var arcGeom = arc.geometry;
+                var apex = fnApex(elem, ix);
+                var vecGS = new THREE.Vector3().copy(vS);
+                arcGeom.vertices = [];
                 for(var i = 0; i < npoints; i++){
-                    var t = i/(npoints-1);
-                    var lat = (llS[0]*(1-t) + llE[0]*t)*Math.PI/180;
+                    var t = partialArc*i/(npoints-1);
+                    /*var lat = (llS[0]*(1-t) + llE[0]*t)*Math.PI/180;
                     var lon = (llS[1]*(1-t) + llE[1]*t)*Math.PI/180;
                     var x = Math.cos(lon)*Math.cos(lat);
                     var z = Math.sin(lon)*Math.cos(lat);
-                    var y = Math.sin(lat);
-                    var radius = t*(1-t)*apex*4 + 1;
-                    x *= radius; y *= radius; z *= radius;
-                    console.log([x,y,z]);
-                    arcGeom.vertices.push(new THREE.Vector3(x,y,z));
+                    var y = Math.sin(lat);*/
+                    mat.multiplyVector3(vecGS);
+
+                    // lift it above the globe surface
+                    var radius = t*(1-t)*4; // in [0,1]
+                    radius = 1-(1-radius)*(1-radius); // steeper rise/fall
+                    radius = radius*apex + 1;
+                    var vecArc = new THREE.Vector3().copy(vecGS).multiplyScalar(radius);
+                    arcGeom.vertices.push(vecArc);
                 }
-                var arcMaterial = 
-                    new THREE.LineBasicMaterial({color:0xff0000});
-                arc = new THREE.Line(arcGeom, arcMaterial);
-                arc.orientation = {x:0,z:0};
-                arcObjs[elemId] = arc;
-                gl.scene.add(arc);
-                gl.meshes.arcs.push(arc);
+                arcGeom.verticesNeedUpdate = true;
+
+                // update the line appearance
+                var col = fnColor(elem,ix);
+                var opa = fnOpacity(elem,ix);
+                var lw = fnLineWidth(elem,ix);
+                arc.material = new THREE.LineBasicMaterial({
+                    color: col, 
+                    opacity: opa,
+                    linewidth: lw
+                });
             });
+
+            //exit
         }
         arcs.data = function(data){
             if(!arguments.length)return fnData;
@@ -1120,6 +1182,24 @@ d3.gl.globe = function(){
             if(!arguments.length) return fnLineWidth;
             if(typeof(lineWidth)==="function") fnLineWidth = lineWidth;
             else fnLineWidth = function(){return lineWidth;}
+            return arcs;
+        }
+        arcs.color = function(color){
+            if(!arguments.length) return fnColor;
+            if(typeof(color)==="function") fnColor = color;
+            else fnColor = function(){return color;}
+            return arcs;
+        }
+        arcs.opacity = function(opacity){
+            if(!arguments.length) return fnOpacity;
+            if(typeof(opacity)==="function") fnOpacity = opacity;
+            else fnOpacity = function(){return opacity;}
+            return arcs;
+        }
+        arcs.partialArc = function(partialArc){
+            if(!arguments.length) return fnPartialArc;
+            if(typeof(partialArc)==="function") fnPartialArc = partialArc;
+            else fnPartialArc = function(){return partialArc;}
             return arcs;
         }
 

@@ -6,7 +6,7 @@
 </head>
 <body>
 
-<h1>Hello World</h1>
+<h1>D3GL Arcs</h1>
 
 <script type="text/javascript" src="../js/jquery-1.8.2.js"></script>
 <script type="text/javascript" src="../js/jquery.mousewheel.js"></script>
@@ -27,11 +27,17 @@ var cities = [
     {lat: 31.2000, lon: 121.5000 }  // shanghai
 ];
 var routes = [
-    [cities[0],cities[1]],
+    [cities[1],cities[0]],
     [cities[0],cities[2]],
     [cities[2],cities[1]],
-    [cities[2],cities[3]]
+    [cities[0],cities[3]]
 ];
+
+var startTime = new Date().getTime();
+function wobble(){
+    var t = Math.sin((new Date().getTime()-startTime)/500);
+    return t*0.5+0.5;
+}
 
 var globe = d3.gl.globe()
     .texture("../img/earth-tex.png");
@@ -39,8 +45,12 @@ globe.arcs()
     .data(routes)
     .start(function(d){return [d[0].lat,d[0].lon]})
     .end(function(d){return [d[1].lat,d[1].lon]})
-    .apex(0.2)
-    .lineWidth(2);
+    .apex(function(d){return 0.05 + 0.03*wobble()})
+    .color(function(d){var w=wobble(); 
+        return (Math.round(0xff*w)*0x10000 + Math.round(0xff*(1-w))*0x100)})
+    .partialArc(function(d){return wobble()})
+    //.opacity(0.3)
+    .lineWidth(4);
 
 d3.select("body").append("span").call(globe);
     
