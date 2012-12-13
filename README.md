@@ -23,6 +23,8 @@ D3GL
 
 API inspired by [Towards Reusable Charts](http://bost.ocks.org/mike/chart/).
 
+[Code](http://github.com/jiwonkim/d3gl) and [documentation](https://github.com/jiwonkim/d3gl/wiki/API-Reference) on Github.
+
 <a href="http://github.com/jiwonkim/d3gl"><img style="position: absolute; top: 0; right: 0; border: 0;" src="http://s3.amazonaws.com/github/ribbons/forkme_right_red_aa0000.png" alt="Fork me on GitHub"></a>
 
 Examples
@@ -30,7 +32,7 @@ Examples
 * [Hello World](http://bl.ocks.org/4056536)
 * [Space Exploration](http://bl.ocks.org/4142482)
 * [Earth's Climate](http://bl.ocks.org/4153053)
-* [Earthquakes](http://bl.ocks.org/)
+* [Earthquakes](http://bl.ocks.org/4274994)
 
 Built with
 ----------
