@@ -164,19 +164,16 @@ function initControls(data, globe) {
             t += 0.01;
             if(t>=1) {
                 currentConcert++;
+                var concert = data[$("select#year").val()][currentConcert];
+                //globe.rotateTo([concert.lat, concert.lon]);
                 if(!selectedPoint) {
-                    showDetails(data[$("select#year").val()][currentConcert]);
+                    showDetails(concert);
                 }
                 if(currentConcert >= data.length) {
                     currentConcert = null; 
                     clearInterval(intervalId);
                 }
                 t = 0;
-                /*
-                if(endLat && endLon) {
-                    globe.rotateTo([endLat, endLon]);
-                }
-                */
             }
         }, 10);
     });
