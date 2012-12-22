@@ -1,6 +1,6 @@
 D3GL
 ====
-A D3 plugin to display spatial data on a globe. Uses WebGL and ThreeJS.
+**A D3 plugin to display spatial data on a globe.** Uses WebGL and ThreeJS.
 
     d3.csv("rainfall.csv", function(data) {
         var rainMax = d3.max(data, function(d,i){return d.rainfall});
@@ -23,26 +23,16 @@ A D3 plugin to display spatial data on a globe. Uses WebGL and ThreeJS.
 
 API inspired by [Towards Reusable Charts](http://bost.ocks.org/mike/chart/).
 
+[Code](http://github.com/jiwonkim/d3gl) and [documentation](https://github.com/jiwonkim/d3gl/wiki/API-Reference) on Github.
+
+<a href="http://github.com/jiwonkim/d3gl"><img style="position: absolute; top: 0; right: 0; border: 0;" src="http://s3.amazonaws.com/github/ribbons/forkme_right_red_aa0000.png" alt="Fork me on GitHub"></a>
+
 Examples
 --------
 * [Hello World](http://bl.ocks.org/4056536)
 * [Space Exploration](http://bl.ocks.org/4142482)
 * [Earth's Climate](http://bl.ocks.org/4153053)
-* Global Airline Routes
-
-Steps
------
-* Basic globe
-* Continent textures
-* Points
-* Regions
-* Circles
-* Bars
-* Arcs
-* Paths
-* Visuals (atmosphere, etc)
-* Interaction (zoom and rotate)
-* Selection
+* [Earthquakes](http://bl.ocks.org/4274994)
 
 Built with
 ----------
