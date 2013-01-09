@@ -23,9 +23,8 @@ D3GL
 
 API inspired by [Towards Reusable Charts](http://bost.ocks.org/mike/chart/).
 
-[Code](http://github.com/jiwonkim/d3gl) and [documentation](https://github.com/jiwonkim/d3gl/wiki/API-Reference) on Github.
-
-<a href="http://github.com/jiwonkim/d3gl"><img style="position: absolute; top: 0; right: 0; border: 0;" src="http://s3.amazonaws.com/github/ribbons/forkme_right_red_aa0000.png" alt="Fork me on GitHub"></a>
+[Code](http://github.com/jiwonkim/d3gl) and [documentation](http://github.com/jiwonkim/d3gl/wiki/API-Reference) on Github.
+Tutorials [here](http://sugar-and-spce.blogspot.com/2012/12/getting-started-with-d3gl.html).
 
 Examples
 --------
