@@ -1235,7 +1235,6 @@ d3.gl.globe = function(){
         return painter;
     }
 
-
     /// *** SHADERS
     /*
      * Globe shader
@@ -1368,4 +1367,185 @@ d3.gl.globe = function(){
 ].join("\n");
 
     return globe;
+};
+
+d3.gl.model = function() {
+    // *** see PROPERTIES
+    // viewport dimensions, in pixels
+    var width = 400;
+    var height = 400;
+
+    // *** PRIVATE
+    var zoom = 2.0, rotation = {"lat":0,"lon":0};
+    var shaders = {}; // hardcoded strings, see bottom
+    var fnMesh;
+
+	// *** CONSTANTS
+	var VIEW_ANGLE = 45,
+	    NEAR = 0.01,
+	    FAR = 100;
+    var MOUSE_SENSITIVITY = 0.15; // degrees rotated per pixel
+    var ZOOM_SENSITIVITY = 0.1; // (0 = no effect, 1 = infinite)
+    var MIN_ZOOM = 0.5, MAX_ZOOM = 4;
+
+    function model(g) {
+        g.each(modelRender);
+    }
+
+    function modelRender(d, i) {
+        // validate 
+        if(this.tagName == "canvas") throw "D3GL creates its own canvas elements. "+
+            "Render into a <div>, not directly into a <canvas>."
+
+        var container;
+        var camera, scene, renderer, objects;
+        var particleLight, pointLight;
+        var dae;
+
+        var meshUrl = fnMesh(d);
+        var loader = new THREE.ColladaLoader();
+        loader.options.convertUpAxis = true;
+        loader.load(d, function ( collada ) {
+            dae = collada.scene;
+            console.log(dae.position);
+
+            var bbox = getBoundingBox(dae);
+
+            // find appropriate scale for object
+            var w = bbox.max.x - bbox.min.x;
+            var h = bbox.max.y - bbox.min.y;
+            var d = bbox.max.z - bbox.min.z;
+            var scale = 1/Math.max(w, Math.max(h, d));
+            dae.scale.x = dae.scale.y = dae.scale.z = scale;
+
+            // center
+            var min = new THREE.Vector3().add(dae.position,
+                bbox.min.multiplyScalar(scale));
+            var max = new THREE.Vector3().add(dae.position,
+                bbox.max.multiplyScalar(scale));
+            var center = new THREE.Vector3().add(min, max).multiplyScalar(0.5);
+            dae.position.subSelf(center);
+            dae.updateMatrix();
+
+            init();
+        } );
+
+        function init() {
+
+            container = document.createElement( 'div' );
+            document.body.appendChild( container );
+
+            camera = new THREE.PerspectiveCamera(VIEW_ANGLE,
+                width/height, NEAR, FAR);
+            camera.position.z = 2;
+
+            scene = new THREE.Scene();
+
+            // Add the COLLADA
+            scene.add( dae );
+
+            particleLight = new THREE.Mesh( new THREE.SphereGeometry( 4, 8, 8 ), new THREE.MeshBasicMaterial( { color: 0xffffff } ) );
+            scene.add( particleLight );
+
+            // Lights
+
+            scene.add( new THREE.AmbientLight( 0x333333) );
+
+            var directionalLight = new THREE.DirectionalLight(/*Math.random() * 0xffffff*/0xeeeeee );
+            directionalLight.position.x = Math.random() - 0.5;
+            directionalLight.position.y = Math.random() - 0.5;
+            directionalLight.position.z = Math.random() - 0.5;
+            directionalLight.position.normalize();
+            scene.add( directionalLight );
+
+            pointLight = new THREE.PointLight( 0xffffff);
+            pointLight.position = particleLight.position;
+            scene.add( pointLight );
+
+            renderer = new THREE.WebGLRenderer();
+            renderer.setSize( width, height);
+
+            container.appendChild( renderer.domElement );
+
+            requestAnimationFrame(render);
+        }
+
+        function render() {
+            var timer = Date.now() * 0.0005;
+            particleLight.position.x = Math.sin( timer * 4 ) * 3009;
+            particleLight.position.y = Math.cos( timer * 5 ) * 4000;
+            particleLight.position.z = Math.cos( timer * 4 ) * 3009;
+
+            renderer.render( scene, camera );
+        }
+    };
+
+    // *** HELPER FUNCTIONS 
+    function getBoundingBox(object) {
+        if(object.boundingBox) return object.boundingBox;
+
+        var bboxes = [];
+        getBoundingBoxes(object, bboxes);
+        var max = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
+        var min = new THREE.Vector3(Infinity, Infinity, Infinity);
+         
+        bboxes.forEach(function(bbox) {
+            var bmin = bbox.min;
+            var bmax = bbox.max;
+            
+            min.x = bmin.x < min.x ? bmin.x : min.x;
+            min.y = bmin.y < min.y ? bmin.y : min.y;
+            min.z = bmin.z < min.z ? bmin.z : min.z;
+
+            max.x = bmax.x > max.x ? bmax.x : max.x;
+            max.y = bmax.y > max.y ? bmax.y : max.y;
+            max.z = bmax.z > max.z ? bmax.z : max.z;
+        });
+
+        object.boundingBox = { min: min, max: max };
+        return object.boundingBox;
+    }
+    
+    function getBoundingBoxes(object, bboxes) {
+        if(object.geometry){
+            bboxes.push(object.geometry.boundingBox);
+        }else{
+            for(var i in object.children){
+                child = object.children[i];
+                getBoundingBoxes(child, bboxes);
+            }
+        } 
+    }
+
+    // *** PROPERTIES
+    model.width = function(val){
+        if(!arguments.length) return width;
+        width = val;
+        return model;
+    }
+    model.height = function(val){
+        if(!arguments.length) return height;
+        height = val;
+        return model;
+    }
+    model.mesh = function(val){
+        if(!arguments.length) return fnMesh;  
+        if(typeof val === "function") fnMesh = val;
+        else fnMesh = function(){return val;}
+        return model;
+    }
+    model.rotation = function(latlon){
+        if(!arguments.length) return rotation;
+        if(!latlon || !latlon.lat || !latlon.lon) throw "Invalid rotation()";
+        rotation = latlon;
+        return model;
+    }
+    model.zoom = function(z){
+        if(!arguments.length) return zoom;
+        if(!z || z<0) throw "Invalid zoom()";
+        zoom = z;
+        return model;
+    }
+
+    return model;
 };
