@@ -1378,13 +1378,25 @@ d3.gl.model = function() {
     // *** PRIVATE
     var zoom = 2.0, rotation = {"lat":0,"lon":0};
     var shaders = {}; // hardcoded strings, see bottom
-    var fnMesh;
+    var fnMesh, fnScale;
+
+    // event handlers
+    var eventHandlers = {
+        /* mouse handlers */
+        'mousedown':[],
+        'mousemove':[],
+        'mouseup':[],
+        'click':[],
+        'dblclick':[],
+        /* fired before each render */
+        'update':[]
+    };
 
 	// *** CONSTANTS
 	var VIEW_ANGLE = 45,
 	    NEAR = 0.01,
 	    FAR = 100;
-    var MOUSE_SENSITIVITY = 0.15; // degrees rotated per pixel
+    var MOUSE_SENSITIVITY = 0.3; // degrees rotated per pixel
     var ZOOM_SENSITIVITY = 0.1; // (0 = no effect, 1 = infinite)
     var MIN_ZOOM = 0.5, MAX_ZOOM = 4;
 
@@ -1397,90 +1409,193 @@ d3.gl.model = function() {
         if(this.tagName == "canvas") throw "D3GL creates its own canvas elements. "+
             "Render into a <div>, not directly into a <canvas>."
 
-        var container;
-        var camera, scene, renderer, objects;
-        var particleLight, pointLight;
-        var dae;
+        // gl stores all the rendering state for each individual globe.
+        // remember that a call to d3.gl.model() may result in multiple model (one per datum)
+        var gl = {};
+        gl.meshes = {model: []};
+        gl.element = this; // the D3 primitive: one dom element, one datum
+        gl.datum = d;
+        gl.index = i;
 
         var meshUrl = fnMesh(d);
-        var loader = new THREE.ColladaLoader();
+        var loader = new THREE.ColladaLoader(); //TODO: change loader with file
         loader.options.convertUpAxis = true;
-        loader.load(d, function ( collada ) {
-            dae = collada.scene;
-            console.log(dae.position);
-
-            var bbox = getBoundingBox(dae);
+        loader.load(meshUrl, function ( collada ) {
+            gl.model = collada.scene;
+            gl.model.matrixAutoUpdate = false;
+            var bbox = getBoundingBox(gl.model);
 
             // find appropriate scale for object
             var w = bbox.max.x - bbox.min.x;
             var h = bbox.max.y - bbox.min.y;
-            var d = bbox.max.z - bbox.min.z;
-            var scale = 1/Math.max(w, Math.max(h, d));
-            dae.scale.x = dae.scale.y = dae.scale.z = scale;
+            var depth = bbox.max.z - bbox.min.z;
+            var scale = 1/Math.max(w, Math.max(h, depth));
+            if(fnScale) scale *= fnScale(d);
+            gl.model.scale.x = gl.model.scale.y = gl.model.scale.z = scale;
 
-            // center
-            var min = new THREE.Vector3().add(dae.position,
-                bbox.min.multiplyScalar(scale));
-            var max = new THREE.Vector3().add(dae.position,
-                bbox.max.multiplyScalar(scale));
-            var center = new THREE.Vector3().add(min, max).multiplyScalar(0.5);
-            dae.position.subSelf(center);
-            dae.updateMatrix();
+            var centerPoint = new THREE.Vector3().add(bbox.min, bbox.max)
+                .multiplyScalar(0.5);
+            var centerTranslation = new THREE.Vector3().sub(
+                gl.model.position, centerPoint).multiplyScalar(scale);
+            // Below has strange problems with decomposing meshes
+            //centerModel(gl.model, centerTranslation);
+            gl.model.position.addSelf(centerTranslation);
+            gl.model.updateMatrix();
 
-            init();
+            start();
         } );
 
-        function init() {
+        function start() {
+            // 3js state
+            initGL(gl); // set up scene, transform, etc
+            initControls(gl, gl.renderer.domElement); // mouse zoom+rotate
+            initStyle(gl.renderer.domElement); // <canvas> style
+            gl.element.appendChild(gl.renderer.domElement);
 
-            container = document.createElement( 'div' );
-            document.body.appendChild( container );
+            function render() {
+                // update
+                fireEvent("update", null);
+                
+                // draw the objects in scene
+                Object.keys(gl.meshes).forEach(function(key) {
+                    var meshes = gl.meshes[key];
+                    meshes.forEach(function(m) {
+                        m.rotation.x = rotation.lat*Math.PI/180; 
+                        m.rotation.y = -rotation.lon*Math.PI/180;
+                        m.updateMatrix();
+                    });
+                });
+                gl.camera.position.z = 1+zoom;
+                gl.renderer.render(gl.scene, gl.camera);
 
-            camera = new THREE.PerspectiveCamera(VIEW_ANGLE,
-                width/height, NEAR, FAR);
-            camera.position.z = 2;
-
-            scene = new THREE.Scene();
-
-            // Add the COLLADA
-            scene.add( dae );
-
-            particleLight = new THREE.Mesh( new THREE.SphereGeometry( 4, 8, 8 ), new THREE.MeshBasicMaterial( { color: 0xffffff } ) );
-            scene.add( particleLight );
-
-            // Lights
-
-            scene.add( new THREE.AmbientLight( 0x333333) );
-
-            var directionalLight = new THREE.DirectionalLight(/*Math.random() * 0xffffff*/0xeeeeee );
-            directionalLight.position.x = Math.random() - 0.5;
-            directionalLight.position.y = Math.random() - 0.5;
-            directionalLight.position.z = Math.random() - 0.5;
-            directionalLight.position.normalize();
-            scene.add( directionalLight );
-
-            pointLight = new THREE.PointLight( 0xffffff);
-            pointLight.position = particleLight.position;
-            scene.add( pointLight );
-
-            renderer = new THREE.WebGLRenderer();
-            renderer.setSize( width, height);
-
-            container.appendChild( renderer.domElement );
-
-            requestAnimationFrame(render);
+                requestAnimationFrame(render);
+            }
+            render();
         }
 
-        function render() {
-            var timer = Date.now() * 0.0005;
-            particleLight.position.x = Math.sin( timer * 4 ) * 3009;
-            particleLight.position.y = Math.cos( timer * 5 ) * 4000;
-            particleLight.position.z = Math.cos( timer * 4 ) * 3009;
+    }
 
-            renderer.render( scene, camera );
+    // *** INIT FUNCTIONS
+    function initGL(gl) {
+        var camera = new THREE.PerspectiveCamera(
+            VIEW_ANGLE, width/height, NEAR, FAR);
+        camera.position.z = 2;
+
+        var scene = new THREE.Scene();
+
+        // Add the COLLADA
+        scene.add(gl.model);
+        gl.meshes.model.push(gl.model);
+
+        // Lights
+        scene.add( new THREE.AmbientLight(0x333333) );
+
+        var directionalLight = new THREE.DirectionalLight(0xcccccc);
+        directionalLight.position.x = 0;
+        directionalLight.position.y = 0.5;
+        directionalLight.position.z = 4;
+        directionalLight.position.normalize();
+        scene.add( directionalLight );
+
+        var pointLight = new THREE.PointLight(0x333333);
+        pointLight.position = directionalLight.position;
+        scene.add(pointLight);
+
+        var renderer = new THREE.WebGLRenderer();
+        renderer.setSize(width, height);
+
+        gl.camera = camera;
+        gl.scene = scene;
+        gl.renderer = renderer;
+        window.gl = gl;
+    }
+
+    function initControls(gl, elem){
+        var dragStart;
+        var latlon = null;
+        $(elem).mousedown(function(evt){
+            fireMouseEvent("mousedown", gl, evt);
+            evt.preventDefault();
+            dragStart = [evt.pageX, evt.pageY];
+        }).mousemove(function(evt){
+            fireMouseEvent("mousemove", gl, evt);
+            if(!dragStart) return;
+            dragUpdate(evt);
+            dragStart = [evt.pageX, evt.pageY]; 
+        }).mouseup(function(evt){
+            fireMouseEvent("mouseup", gl, evt);
+            if(!dragStart) return;
+            dragUpdate(evt);
+            dragStart = null;
+        }).mouseleave(function(evt){
+            if(!dragStart) return;
+            dragUpdate(evt);
+            dragStart = null;
+        }).click(function(evt){
+            fireMouseEvent("click", gl, evt);
+        }).dblclick(function(evt){
+            fireMouseEvent("dblclick", gl, evt);
+        }).mousewheel(function(evt, delta, dx, dy){
+            zoomUpdate(Math.pow(1-ZOOM_SENSITIVITY, dy));
+            evt.preventDefault();
+        });
+
+        $(document).keydown(function(evt){
+            var key = String.fromCharCode(evt.which).toLowerCase();
+            if(key=="w") zoomUpdate(1/1.2); // zoom in
+            else if(key=="s") zoomUpdate(1.2); // zoom out
+            else if(key=="a") rotation.lon -= 10;
+            else if(key=="d") rotation.lon += 10;
+            else return;
+            evt.preventDefault();
+        });
+
+        function zoomUpdate(z){
+            zoom *= z;
+            zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
         }
-    };
+        function dragUpdate(evt){
+            rotation.lon -= (evt.pageX - dragStart[0])*MOUSE_SENSITIVITY*zoom;
+            rotation.lat += (evt.pageY - dragStart[1])*MOUSE_SENSITIVITY*zoom;
+        }
+    }
+
+    function initStyle(elem){
+        elem.style.cursor = "pointer";
+    }
+
+    // *** MOUSE EVENT FUNCTIONS
+    function fireMouseEvent(name, gl, evt){
+        var handlers = eventHandlers[name];
+        if (handlers.length == 0) return;
+        evt.latlon = intersect(gl, evt);
+        evt.datum = gl.datum;
+        for(var i = 0; i < handlers.length; i++){
+            handlers[i](evt);
+        }
+    }
+    function fireEvent(name, evt) {
+        var handlers = eventHandlers[name];
+        if (handlers.length == 0) return;
+        for(var i = 0; i < handlers.length; i++){
+            handlers[i](evt);
+        }
+    }
 
     // *** HELPER FUNCTIONS 
+    function centerModel(object, centerTranslation) {
+        if(object.geometry){
+            object.geometry.vertices.forEach(function(vertex) {
+                vertex.addSelf(centerTranslation);
+            });
+        }else{
+            for(var i in object.children){
+                child = object.children[i];
+                centerModel(child, centerTranslation);
+            }
+        } 
+    }
+
     function getBoundingBox(object) {
         if(object.boundingBox) return object.boundingBox;
 
@@ -1534,6 +1649,12 @@ d3.gl.model = function() {
         else fnMesh = function(){return val;}
         return model;
     }
+    model.scale = function(val){
+        if(!arguments.length) return fnScale;  
+        if(typeof val === "function") fnScale = val;
+        else fnScale = function(){return val;}
+        return model;
+    }
     model.rotation = function(latlon){
         if(!arguments.length) return rotation;
         if(!latlon || !latlon.lat || !latlon.lon) throw "Invalid rotation()";
@@ -1546,6 +1667,26 @@ d3.gl.model = function() {
         zoom = z;
         return model;
     }
+
+    shaders.model = {};
+    shaders.model.vertex = [
+"// texture coordinate for vertex to be interpolated and passed into",
+"// fragment shader per fragment",
+"varying vec2 vUv;",
+"",
+"void main() {",
+"    vUv = uv;",
+"    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1);",
+"}"
+].join("\n");
+    shaders.model.fragment = [
+"uniform sampler2D texBase;    // background texture",
+"varying vec2 vUv;             // texture coordinats",
+"",
+"void main() {",
+"    gl_FragColor = texture2D(texBase, vUv);",
+"}",
+].join("\n");
 
     return model;
 };
