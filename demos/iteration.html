@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>D3GL Apple</title>
+    <link rel="stylesheet" href="../css/demo.css" />
+</head>
+<style>
+    .iteration {
+        position: relative;
+        left: 100px;
+        width: 820px;
+    }
+    
+    .bar {
+        display: inline-block;
+        width: 10px;
+        background-color: #05a842;
+    }
+</style>
+<body>
+
+<h1>Iteration Analysis</h1>
+
+<script type="text/javascript" src="../js/jquery-1.8.2.js"></script>
+<script type="text/javascript" src="../js/jquery.mousewheel.js"></script>
+<script type="text/javascript" src="../js/d3.v2.js"></script>
+<script type="text/javascript" src="../js/RequestAnimationFrame.js"></script>
+<script type="text/javascript" src="../js/three.js"></script>
+<script type="text/javascript" src="../js/d3gl.js"></script>
+<!--TODO: add collada loader when minifying-->
+<script type="text/javascript" src="../js/OBJLoader.js"></script>
+<!-- All scripts above are included here:
+<script type="text/javascript" src="../js/d3gl.min.js"></script> -->
+
+<script type="text/javascript">
+$(function(){
+
+// 3d iteration data using d3.gl.model
+var elements = [1, 2, 3, 4];
+var heatmapModel = d3.gl.model()
+    .width(200).height(250).scale(1.4)
+    .mesh("../models/vase1.obj")
+    .texture(function(d) { return '../img/vase' + d + '-heat-tex.jpg'; });
+
+d3.select("#vases").selectAll("span")
+    .data(elements).enter().append("span")
+    .call(heatmapModel);
+
+var afterModel = d3.gl.model()
+    .width(200).height(250).scale(1.2)
+    .mesh("../models/screw.obj")
+    .texture(function(d) { return '../img/screwuv' + d + '.png'; });
+
+d3.select("#screws").selectAll("span")
+    .data(elements).enter().append("span")
+    .call(afterModel);
+});
+
+</script>
+<div class="iteration" id="vases"></div>
+<div class="iteration" id="screws"></div>
+</body>
+</html>

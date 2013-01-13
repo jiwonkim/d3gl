@@ -361,13 +361,11 @@ d3.gl.globe = function(){
         gl.textures = {};
 
         // load textures
-        console.log("loading textures");
         var canvas = document.createElement("canvas");
         canvas.width = 128;
         canvas.height = 128;
         var texUrl = fnTex(d);
         gl.textures.base = THREE.ImageUtils.loadTexture(texUrl, null, function(){
-            console.log("textures loaded");
             start();
         });
         gl.atmosphere = fnAtmosphere(d);
@@ -1378,7 +1376,7 @@ d3.gl.model = function() {
     // *** PRIVATE
     var zoom = 2.0, rotation = {"lat":0,"lon":0};
     var shaders = {}; // hardcoded strings, see bottom
-    var fnMesh, fnScale;
+    var fnMesh, fnTex, fnOverlay, fnScale;
 
     // event handlers
     var eventHandlers = {
@@ -1413,37 +1411,71 @@ d3.gl.model = function() {
         // remember that a call to d3.gl.model() may result in multiple model (one per datum)
         var gl = {};
         gl.meshes = {model: []};
+        gl.textures = {};
         gl.element = this; // the D3 primitive: one dom element, one datum
         gl.datum = d;
         gl.index = i;
 
         var meshUrl = fnMesh(d);
-        var loader = new THREE.ColladaLoader(); //TODO: change loader with file
-        loader.options.convertUpAxis = true;
-        loader.load(meshUrl, function ( collada ) {
-            gl.model = collada.scene;
+        var texUrl = fnTex(d);
+        var overlayUrl = '';
+        if(fnOverlay) overlayUrl = fnOverlay(d);
+        console.log(overlayUrl);
+        var bbox, mesh;
+        var loader = new THREE.OBJLoader(); //TODO: change loader with file
+        loader.addEventListener('load', function(evt) {
+            mesh = evt.content.children[0];
+            bbox = getBoundingBox(mesh);
+
+            /*
+new THREE.MeshBasicMaterial({
+                map: THREE.ImageUtils.loadTexture(texUrl)
+            });
+            */
+
+            gl.textures.base = THREE.ImageUtils.loadTexture(texUrl, null, function(){
+
+                if(overlayUrl) {
+                var overlay = new Image();
+                    overlay.crossOrigin = '';
+                    overlay.src = overlayUrl;
+                    overlay.onload = function() {
+                        initModel(overlay); 
+                        start();
+                    };
+                } else {
+                    initModel();
+                    start();
+                }
+            });
+        } );
+        loader.load(meshUrl);
+
+        function initModel(overlay) {
+            // create mesh with coupled texture for loaded obj file
+            gl.material = initMaterial(shaders.model, gl.textures);
+            gl.model = new THREE.Mesh(mesh.geometry, gl.material);
             gl.model.matrixAutoUpdate = false;
-            var bbox = getBoundingBox(gl.model);
 
             // find appropriate scale for object
             var w = bbox.max.x - bbox.min.x;
             var h = bbox.max.y - bbox.min.y;
             var depth = bbox.max.z - bbox.min.z;
-            var scale = 1/Math.max(w, Math.max(h, depth));
+            var scale = 1.5/Math.max(w, Math.max(h, depth));
             if(fnScale) scale *= fnScale(d);
             gl.model.scale.x = gl.model.scale.y = gl.model.scale.z = scale;
 
             var centerPoint = new THREE.Vector3().add(bbox.min, bbox.max)
                 .multiplyScalar(0.5);
             var centerTranslation = new THREE.Vector3().sub(
-                gl.model.position, centerPoint).multiplyScalar(scale);
+                gl.model.position, centerPoint);//.multiplyScalar(scale);
             // Below has strange problems with decomposing meshes
-            //centerModel(gl.model, centerTranslation);
-            gl.model.position.addSelf(centerTranslation);
+            centerModel(gl.model, centerTranslation);
+            //gl.model.position.addSelf(centerTranslation);
+            //console.log(gl.model.position);
             gl.model.updateMatrix();
-
-            start();
-        } );
+        
+        }
 
         function start() {
             // 3js state
@@ -1564,6 +1596,23 @@ d3.gl.model = function() {
         elem.style.cursor = "pointer";
     }
 
+    function initMaterial(shaders, textures){
+        console.log(textures.overlay);
+        var uniforms = {
+            texBase: {
+                type: "t",
+                value: textures.base
+            },
+        };
+        var material = new THREE.ShaderMaterial({
+            vertexShader: shaders.vertex,
+            fragmentShader: shaders.fragment,
+            uniforms: uniforms,
+        });
+
+        return material;
+    };
+
     // *** MOUSE EVENT FUNCTIONS
     function fireMouseEvent(name, gl, evt){
         var handlers = eventHandlers[name];
@@ -1596,40 +1645,11 @@ d3.gl.model = function() {
         } 
     }
 
-    function getBoundingBox(object) {
-        if(object.boundingBox) return object.boundingBox;
-
-        var bboxes = [];
-        getBoundingBoxes(object, bboxes);
-        var max = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
-        var min = new THREE.Vector3(Infinity, Infinity, Infinity);
-         
-        bboxes.forEach(function(bbox) {
-            var bmin = bbox.min;
-            var bmax = bbox.max;
-            
-            min.x = bmin.x < min.x ? bmin.x : min.x;
-            min.y = bmin.y < min.y ? bmin.y : min.y;
-            min.z = bmin.z < min.z ? bmin.z : min.z;
-
-            max.x = bmax.x > max.x ? bmax.x : max.x;
-            max.y = bmax.y > max.y ? bmax.y : max.y;
-            max.z = bmax.z > max.z ? bmax.z : max.z;
-        });
-
-        object.boundingBox = { min: min, max: max };
-        return object.boundingBox;
-    }
-    
-    function getBoundingBoxes(object, bboxes) {
-        if(object.geometry){
-            bboxes.push(object.geometry.boundingBox);
-        }else{
-            for(var i in object.children){
-                child = object.children[i];
-                getBoundingBoxes(child, bboxes);
-            }
-        } 
+    function getBoundingBox(mesh) {
+        if(!mesh.geometry) throw "D3GL Model only supports meshes with one geometry"
+        if(mesh.geometry.boundingBox) return mesh.geometry.boundingBox;
+        mesh.geometry.computeBoundingBox();
+        return mesh.geometry.boundingBox;
     }
 
     // *** PROPERTIES
@@ -1647,6 +1667,18 @@ d3.gl.model = function() {
         if(!arguments.length) return fnMesh;  
         if(typeof val === "function") fnMesh = val;
         else fnMesh = function(){return val;}
+        return model;
+    }
+    model.texture = function(val){
+        if(!arguments.length) return fnTex;  
+        if(typeof val === "function") fnTex = val;
+        else fnTex = function(){return val;}
+        return model;
+    }
+    model.overlay = function(val){
+        if(!arguments.length) return fnOverlay;  
+        if(typeof val === "function") fnOverlay = val;
+        else fnOverlay = function(){return val;}
         return model;
     }
     model.scale = function(val){
@@ -1680,8 +1712,9 @@ d3.gl.model = function() {
 "}"
 ].join("\n");
     shaders.model.fragment = [
+"varying vec2 vUv;",
 "uniform sampler2D texBase;    // background texture",
-"varying vec2 vUv;             // texture coordinats",
+"uniform sampler2D texOverlay; // canvas overlay texture",
 "",
 "void main() {",
 "    gl_FragColor = texture2D(texBase, vUv);",
