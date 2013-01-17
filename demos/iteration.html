@@ -37,6 +37,7 @@ $(function(){
 
 // 3d iteration data using d3.gl.model
 var elements = [1, 2, 3, 4];
+/*
 var heatmapModel = d3.gl.model()
     .width(200).height(250).scale(1.4)
     .mesh("../models/vase1.obj")
@@ -46,14 +47,18 @@ d3.select("#vases").selectAll("span")
     .data(elements).enter().append("span")
     .call(heatmapModel);
 
-var afterModel = d3.gl.model()
+*/
+var screwModel = d3.gl.model()
     .width(200).height(250).scale(1.2)
     .mesh("../models/screw.obj")
     .texture(function(d) { return '../img/screwuv' + d + '.png'; });
 
+var painter = screwModel.painter()
+    .paint("../img/gradient-tex.jpg");
+
 d3.select("#screws").selectAll("span")
     .data(elements).enter().append("span")
-    .call(afterModel);
+    .call(screwModel);
 });
 
 </script>

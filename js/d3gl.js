@@ -655,8 +655,8 @@ d3.gl.globe = function(){
     }
 
     /* globe.points
-     * * lat
-     * * lon
+     * * latitude
+     * * longitude
      * * color
      * * radius 
      */
@@ -1376,7 +1376,8 @@ d3.gl.model = function() {
     // *** PRIVATE
     var zoom = 2.0, rotation = {"lat":0,"lon":0};
     var shaders = {}; // hardcoded strings, see bottom
-    var fnMesh, fnTex, fnOverlay, fnScale;
+    var fnMesh, fnTex, fnScale;
+    var overlayTex = [];
 
     // event handlers
     var eventHandlers = {
@@ -1431,8 +1432,8 @@ d3.gl.model = function() {
         loader.load(meshUrl);
 
         function start() {
-            initModel(gl); // pre-process model for display
             initGL(gl); // set up scene, transform, etc
+            initModel(gl); // pre-process model for display and add to scene
             initControls(gl, gl.renderer.domElement); // mouse zoom+rotate
             initStyle(gl.renderer.domElement); // <canvas> style
             gl.element.appendChild(gl.renderer.domElement);
@@ -1440,8 +1441,19 @@ d3.gl.model = function() {
             function render() {
                 // update
                 fireEvent("update", null);
+
+                // draw the 2D (texture) overlays
+                var context = gl.overlayCanvas.getContext("2d");
+                context.setTransform(1,0,0,1,0,0); // identity
+                context.width = gl.overlayCanvas.width;
+                context.height = gl.overlayCanvas.height;
+                context.clearRect(0,0,context.width,context.height);
+                for(var i = 0; i < overlayTex.length; i++){
+                    overlayTex[i](gl, context, d);
+                }
+                gl.textures.overlay.needsUpdate = true; // tell 3js to update
                 
-                // draw the objects in scene
+                // appropriately rotate & zoom
                 Object.keys(gl.meshes).forEach(function(key) {
                     var meshes = gl.meshes[key];
                     meshes.forEach(function(m) {
@@ -1451,8 +1463,11 @@ d3.gl.model = function() {
                     });
                 });
                 gl.camera.position.z = 1+zoom;
-                gl.renderer.render(gl.scene, gl.camera);
 
+                // render scene
+                gl.renderer.render(gl.scene, gl.camera);
+                
+                // schedule next render
                 requestAnimationFrame(render);
             }
             render();
@@ -1461,32 +1476,6 @@ d3.gl.model = function() {
     }
 
     // *** INIT FUNCTIONS
-    function initModel(gl) {
-        // create mesh with coupled texture for loaded obj file
-        gl.material = initMaterial(shaders.model, gl.textures);
-        gl.model = new THREE.Mesh(gl.obj.mesh.geometry, gl.material);
-        gl.model.matrixAutoUpdate = false;
-
-        // find appropriate scale for object
-        var w = gl.obj.bbox.max.x - gl.obj.bbox.min.x;
-        var h = gl.obj.bbox.max.y - gl.obj.bbox.min.y;
-        var depth = gl.obj.bbox.max.z - gl.obj.bbox.min.z;
-        var scale = 1.5/Math.max(w, Math.max(h, depth));
-        scale *= gl.obj.scale;
-        gl.model.scale.x = gl.model.scale.y = gl.model.scale.z = scale;
-
-        var centerPoint = new THREE.Vector3().add(gl.obj.bbox.min, gl.obj.bbox.max)
-            .multiplyScalar(0.5);
-        var centerTranslation = new THREE.Vector3().sub(
-            gl.model.position, centerPoint);//.multiplyScalar(scale);
-        // Below has strange problems with decomposing meshes
-        centerModel(gl.model, centerTranslation);
-        //gl.model.position.addSelf(centerTranslation);
-        //console.log(gl.model.position);
-        gl.model.updateMatrix();
-    
-    }
-
     function initGL(gl) {
         var camera = new THREE.PerspectiveCamera(
             VIEW_ANGLE, width/height, NEAR, FAR);
@@ -1494,9 +1483,11 @@ d3.gl.model = function() {
 
         var scene = new THREE.Scene();
 
-        // Add the COLLADA
-        scene.add(gl.model);
-        gl.meshes.model.push(gl.model);
+        // create hidden canvas element for texture manipulation
+        gl.overlayCanvas = document.createElement("canvas");
+        gl.overlayCanvas.width = 512; //TODO: let user define dimensions
+        gl.overlayCanvas.height = 512;
+        gl.textures.overlay = new THREE.Texture(gl.overlayCanvas);
 
         // Lights
         scene.add( new THREE.AmbientLight(0x333333) );
@@ -1519,6 +1510,33 @@ d3.gl.model = function() {
         gl.scene = scene;
         gl.renderer = renderer;
         window.gl = gl;
+    }
+
+    function initModel(gl) {
+        // create mesh with coupled texture for loaded obj file
+        gl.material = initMaterial(shaders.model, gl.textures);
+        gl.model = new THREE.Mesh(gl.obj.mesh.geometry, gl.material);
+        gl.model.matrixAutoUpdate = false;
+
+        // find appropriate scale for object
+        var w = gl.obj.bbox.max.x - gl.obj.bbox.min.x;
+        var h = gl.obj.bbox.max.y - gl.obj.bbox.min.y;
+        var depth = gl.obj.bbox.max.z - gl.obj.bbox.min.z;
+        var scale = 1.5/Math.max(w, Math.max(h, depth));
+        scale *= gl.obj.scale;
+        gl.model.scale.x = gl.model.scale.y = gl.model.scale.z = scale;
+
+        var centerPoint = new THREE.Vector3().add(gl.obj.bbox.min, gl.obj.bbox.max)
+            .multiplyScalar(0.5);
+        var centerTranslation = new THREE.Vector3().sub(
+            gl.model.position, centerPoint);//.multiplyScalar(scale);
+        // Below has strange problems with decomposing meshes
+        centerModel(gl.model, centerTranslation);
+        //gl.model.position.addSelf(centerTranslation);
+        gl.model.updateMatrix();
+        
+        gl.scene.add(gl.model); 
+        gl.meshes.model.push(gl.model);
     }
 
     function initControls(gl, elem){
@@ -1580,6 +1598,10 @@ d3.gl.model = function() {
             texBase: {
                 type: "t",
                 value: textures.base
+            },
+            texOverlay: {
+                type: "t",
+                value: textures.overlay
             },
         };
         var material = new THREE.ShaderMaterial({
@@ -1678,6 +1700,43 @@ d3.gl.model = function() {
         return model;
     }
 
+    // *** PRIMITIVES
+
+    // painter
+    model.painter = function(){
+        var fnData = function(d) { return d; };
+        var fnPaint, img;
+        function painter(gl, context, datum) {
+            fnPaint(gl, context, fnData(datum));
+        }
+        painter.paint = function(val) {
+            if(arguments.length == 0) return fnPaint;
+            if(typeof val == "function") {
+                fnPaint = val;
+            } else if(typeof val == "string") {
+                img = new Image();
+                img.crossOrigin = '';
+                img.src = val;
+                fnPaint = function(gl, context, data) {
+                    if(img.complete) context.drawImage(img, 0, 0);
+                };
+            } else {
+                throw "The argument to paint should either be a canvas-rendering function" +
+                    " or a string that is the url of a texture";
+            }
+            return painter;
+        }
+        painter.data = function(val){
+            if(arguments.length == 0) return fnData;
+            if(typeof val == "function") fnData = val;
+            else fnData = function(){return val;};
+            return painter;
+        }
+       
+        overlayTex.push(painter);
+        return painter;
+    }
+
     shaders.model = {};
     shaders.model.vertex = [
 "// texture coordinate for vertex to be interpolated and passed into",
@@ -1697,6 +1756,8 @@ d3.gl.model = function() {
 "void main() {",
 //"    gl_FragColor = vec4(1., 0., 0., 1.);",
 "    gl_FragColor = texture2D(texBase, vUv);",
+"    vec4 overlay = texture2D(texOverlay, vUv);",
+"    gl_FragColor = mix(gl_FragColor, overlay, 0.5);",
 "}",
 ].join("\n");
 
