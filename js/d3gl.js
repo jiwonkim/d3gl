@@ -1418,67 +1418,20 @@ d3.gl.model = function() {
 
         var meshUrl = fnMesh(d);
         var texUrl = fnTex(d);
-        var overlayUrl = '';
-        if(fnOverlay) overlayUrl = fnOverlay(d);
-        console.log(overlayUrl);
-        var bbox, mesh;
         var loader = new THREE.OBJLoader(); //TODO: change loader with file
         loader.addEventListener('load', function(evt) {
-            mesh = evt.content.children[0];
-            bbox = getBoundingBox(mesh);
-
-            /*
-new THREE.MeshBasicMaterial({
-                map: THREE.ImageUtils.loadTexture(texUrl)
-            });
-            */
-
+            gl.obj = {};
+            gl.obj.mesh = evt.content.children[0];
+            gl.obj.bbox = getBoundingBox(gl.obj.mesh);
+            gl.obj.scale = fnScale ? fnScale(d) : 1.;
             gl.textures.base = THREE.ImageUtils.loadTexture(texUrl, null, function(){
-
-                if(overlayUrl) {
-                var overlay = new Image();
-                    overlay.crossOrigin = '';
-                    overlay.src = overlayUrl;
-                    overlay.onload = function() {
-                        initModel(overlay); 
-                        start();
-                    };
-                } else {
-                    initModel();
-                    start();
-                }
+                start();
             });
         } );
         loader.load(meshUrl);
 
-        function initModel(overlay) {
-            // create mesh with coupled texture for loaded obj file
-            gl.material = initMaterial(shaders.model, gl.textures);
-            gl.model = new THREE.Mesh(mesh.geometry, gl.material);
-            gl.model.matrixAutoUpdate = false;
-
-            // find appropriate scale for object
-            var w = bbox.max.x - bbox.min.x;
-            var h = bbox.max.y - bbox.min.y;
-            var depth = bbox.max.z - bbox.min.z;
-            var scale = 1.5/Math.max(w, Math.max(h, depth));
-            if(fnScale) scale *= fnScale(d);
-            gl.model.scale.x = gl.model.scale.y = gl.model.scale.z = scale;
-
-            var centerPoint = new THREE.Vector3().add(bbox.min, bbox.max)
-                .multiplyScalar(0.5);
-            var centerTranslation = new THREE.Vector3().sub(
-                gl.model.position, centerPoint);//.multiplyScalar(scale);
-            // Below has strange problems with decomposing meshes
-            centerModel(gl.model, centerTranslation);
-            //gl.model.position.addSelf(centerTranslation);
-            //console.log(gl.model.position);
-            gl.model.updateMatrix();
-        
-        }
-
         function start() {
-            // 3js state
+            initModel(gl); // pre-process model for display
             initGL(gl); // set up scene, transform, etc
             initControls(gl, gl.renderer.domElement); // mouse zoom+rotate
             initStyle(gl.renderer.domElement); // <canvas> style
@@ -1508,6 +1461,32 @@ new THREE.MeshBasicMaterial({
     }
 
     // *** INIT FUNCTIONS
+    function initModel(gl) {
+        // create mesh with coupled texture for loaded obj file
+        gl.material = initMaterial(shaders.model, gl.textures);
+        gl.model = new THREE.Mesh(gl.obj.mesh.geometry, gl.material);
+        gl.model.matrixAutoUpdate = false;
+
+        // find appropriate scale for object
+        var w = gl.obj.bbox.max.x - gl.obj.bbox.min.x;
+        var h = gl.obj.bbox.max.y - gl.obj.bbox.min.y;
+        var depth = gl.obj.bbox.max.z - gl.obj.bbox.min.z;
+        var scale = 1.5/Math.max(w, Math.max(h, depth));
+        scale *= gl.obj.scale;
+        gl.model.scale.x = gl.model.scale.y = gl.model.scale.z = scale;
+
+        var centerPoint = new THREE.Vector3().add(gl.obj.bbox.min, gl.obj.bbox.max)
+            .multiplyScalar(0.5);
+        var centerTranslation = new THREE.Vector3().sub(
+            gl.model.position, centerPoint);//.multiplyScalar(scale);
+        // Below has strange problems with decomposing meshes
+        centerModel(gl.model, centerTranslation);
+        //gl.model.position.addSelf(centerTranslation);
+        //console.log(gl.model.position);
+        gl.model.updateMatrix();
+    
+    }
+
     function initGL(gl) {
         var camera = new THREE.PerspectiveCamera(
             VIEW_ANGLE, width/height, NEAR, FAR);
@@ -1597,7 +1576,6 @@ new THREE.MeshBasicMaterial({
     }
 
     function initMaterial(shaders, textures){
-        console.log(textures.overlay);
         var uniforms = {
             texBase: {
                 type: "t",
@@ -1717,6 +1695,7 @@ new THREE.MeshBasicMaterial({
 "uniform sampler2D texOverlay; // canvas overlay texture",
 "",
 "void main() {",
+//"    gl_FragColor = vec4(1., 0., 0., 1.);",
 "    gl_FragColor = texture2D(texBase, vUv);",
 "}",
 ].join("\n");
