@@ -1485,8 +1485,9 @@ d3.gl.model = function() {
 
         // create hidden canvas element for texture manipulation
         gl.overlayCanvas = document.createElement("canvas");
-        gl.overlayCanvas.width = 512; //TODO: let user define dimensions
-        gl.overlayCanvas.height = 512;
+        // width and height are dictated by base texture
+        gl.overlayCanvas.width = gl.textures.base.image.width; 
+        gl.overlayCanvas.height = gl.textures.base.image.height;
         gl.textures.overlay = new THREE.Texture(gl.overlayCanvas);
 
         // Lights
@@ -1703,7 +1704,7 @@ d3.gl.model = function() {
     // *** PRIMITIVES
 
     // painter
-    model.painter = function(){
+    model.painter = function() {
         var fnData = function(d) { return d; };
         var fnPaint, img;
         function painter(gl, context, datum) {
@@ -1737,6 +1738,94 @@ d3.gl.model = function() {
         return painter;
     }
 
+    // heatmap    
+    model.heatmap = function() {
+        var fnData = function(d) { return d; };
+        var heatCanvas = document.createElement("canvas"); // hidden canvas
+        $("body").append(heatCanvas);
+        var fnUv; // funtion that take data elem and returns uv coords [0, 1]
+        var fnDensity; // takes uv coord and returns density [0, 1]
+        var radius, gradient;
+        var heatmapImg;
+        var update = true;
+        function heatmap(gl, context, datum) {
+            if(update) {
+                heatmapImg = renderHeatmap(gl, context, fnData(datum));
+                update = false;
+            }
+            context.drawImage(heatmapImg, 0, 0, context.width, context.height);
+        }
+
+        function renderHeatmap(gl, context, data) {
+            var rx = context.width;
+            var ry = context.height;
+            heatCanvas.width = rx;
+            heatCanvas.height = ry;
+            var heatContext = heatCanvas.getContext("2d");
+            heatContext.clearRect(0, 0, rx, ry);
+
+            // set up gradient
+            if(!gradient) {
+            }
+            
+            // set shadow properties
+            if(!radius) radius = 0.1*rx; // default radius is 10% of width
+            heatContext.shadowOffsetX = 20000;
+            heatContext.shadowOffsetY = 20000;
+            heatContext.shadowBlur = radius;
+
+            // for each data, draw a shadow
+            data.forEach(function(d) {
+                // get properties for data element
+                var uv = fnUv(d);                
+                var density = fnDensity(d);
+                var x = rx*uv[0];
+                var y = ry*uv[1];
+
+                // draw shadow
+                heatContext.shadowColor = 'rgba(0, 0, 0,'+density+')';
+                heatContext.beginPath();
+                heatContext.arc(x-20000, y-20000, radius, 0, 2*Math.PI, true);
+                heatContext.closePath();
+                heatContext.fill();
+            });
+
+            var map = new Image();
+            map.src = heatCanvas.toDataURL("image/png");
+            return map;
+        }
+
+        heatmap.data = function(val) {
+            if(arguments.length == 0) return fnData;
+            if(typeof val == "function") fnData = val;
+            else fnData = function(){return val;};
+            return heatmap;
+        }
+
+        heatmap.radius = function(val) {
+            if(arguments.length == 0) return radius;
+            radius = val;
+            return heatmap;
+        }
+
+        heatmap.uv = function(val) {
+            if(arguments.length == 0) return fnUv;
+            if(typeof val == "function") fnUv = val;
+            else fnUv = function(){return val;};
+            return heatmap;
+        }
+
+        heatmap.density = function(val) {
+            if(arguments.length == 0) return fnDensity;
+            if(typeof val == "function") fnDensity = val;
+            else fnDensity = function(){return val;};
+            return heatmap;
+        }
+
+        overlayTex.push(heatmap);
+        return heatmap;
+    }
+
     shaders.model = {};
     shaders.model.vertex = [
 "// texture coordinate for vertex to be interpolated and passed into",
@@ -1754,10 +1843,9 @@ d3.gl.model = function() {
 "uniform sampler2D texOverlay; // canvas overlay texture",
 "",
 "void main() {",
-//"    gl_FragColor = vec4(1., 0., 0., 1.);",
-"    gl_FragColor = texture2D(texBase, vUv);",
 "    vec4 overlay = texture2D(texOverlay, vUv);",
-"    gl_FragColor = mix(gl_FragColor, overlay, 0.5);",
+"    gl_FragColor = texture2D(texBase, vUv);",
+"    gl_FragColor = mix(gl_FragColor, overlay, overlay.a);",
 "}",
 ].join("\n");
 

@@ -53,8 +53,38 @@ var screwModel = d3.gl.model()
     .mesh("../models/screw.obj")
     .texture(function(d) { return '../img/screwuv' + d + '.png'; });
 
+/*
 var painter = screwModel.painter()
     .paint("../img/gradient-tex.jpg");
+    */
+
+var stressTest = [
+    {u: Math.random(), v: Math.random(), density: Math.random()},
+    {u: Math.random(), v: Math.random(), density: Math.random()},
+    {u: Math.random(), v: Math.random(), density: Math.random()},
+    {u: Math.random(), v: Math.random(), density: Math.random()},
+    {u: Math.random(), v: Math.random(), density: Math.random()},
+    {u: Math.random(), v: Math.random(), density: Math.random()},
+    {u: Math.random(), v: Math.random(), density: Math.random()},
+    {u: Math.random(), v: Math.random(), density: Math.random()},
+    {u: Math.random(), v: Math.random(), density: Math.random()},
+    {u: Math.random(), v: Math.random(), density: Math.random()},
+    {u: Math.random(), v: Math.random(), density: Math.random()},
+    {u: Math.random(), v: Math.random(), density: Math.random()},
+    {u: Math.random(), v: Math.random(), density: Math.random()},
+    {u: Math.random(), v: Math.random(), density: Math.random()},
+    {u: Math.random(), v: Math.random(), density: Math.random()},
+    {u: Math.random(), v: Math.random(), density: Math.random()},
+    {u: Math.random(), v: Math.random(), density: Math.random()},
+];
+var heatmap = screwModel.heatmap()
+    .data(stressTest)
+    .density(function(d) {
+        return d.density;
+    })
+    .uv(function(d) {
+        return [d.u, d.v];
+    });
 
 d3.select("#screws").selectAll("span")
     .data(elements).enter().append("span")
