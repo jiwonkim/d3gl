@@ -1742,7 +1742,9 @@ d3.gl.model = function() {
     model.heatmap = function() {
         var fnData = function(d) { return d; };
         var heatCanvas = document.createElement("canvas"); // hidden canvas
-        $("body").append(heatCanvas);
+        $("body").append(heatCanvas); // for debugging
+        var gradientCanvas = document.createElement("canvas");
+        $("body").append(gradientCanvas); // for debugging
         var fnUv; // funtion that take data elem and returns uv coords [0, 1]
         var fnDensity; // takes uv coord and returns density [0, 1]
         var radius, gradient;
@@ -1766,6 +1768,20 @@ d3.gl.model = function() {
 
             // set up gradient
             if(!gradient) {
+                gradient = {};
+                gradient.stops = { 0.4: "rgb(0,0,255)", 0.5: "rgb(0,255,255)", 0.6: "rgb(0,255,0)", 0.8: "yellow", 0.95: "rgb(255,0,0)"};
+                gradient.length = gradientCanvas.width = 100;
+                gradientCanvas.height = 10;
+                var gradientContext = gradientCanvas.getContext("2d");
+                var linearGradient = gradientContext.createLinearGradient(0, 0, 100, 10);
+
+                Object.keys(gradient.stops).forEach(function(key) {
+                    linearGradient.addColorStop(key, gradient.stops[key]);
+                });
+
+                gradientContext.fillStyle = linearGradient;
+                gradientContext.fillRect(0, 0, 100, 10);
+                gradient.data = gradientContext.getImageData(0, 5, 100, 5).data;
             }
             
             // set shadow properties
@@ -1789,6 +1805,21 @@ d3.gl.model = function() {
                 heatContext.closePath();
                 heatContext.fill();
             });
+
+            // color the shadows according to density
+            var pixels = heatContext.getImageData(0, 0, rx, ry);
+            for(var r=0; r<ry; r++) {
+                for(var c=0; c<rx; c++) {
+                    var idx = (c + r*rx)*4;
+                    var density = pixels.data[idx + 3]/255;
+                    var offset = (Math.floor(gradient.length * density))*4;
+                    pixels.data[idx] = gradient.data[offset];
+                    pixels.data[idx + 1] = gradient.data[offset + 1];
+                    pixels.data[idx + 2] = gradient.data[offset + 2];
+                }
+            }
+            heatContext.clearRect(0, 0, rx, ry);
+            heatContext.putImageData(pixels, 0, 0);
 
             var map = new Image();
             map.src = heatCanvas.toDataURL("image/png");
