@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>D3GL Mars Landings</title>
+    <style type="text/css">
+        .mars {
+            width: 400px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+    </style>
+</head>
+<body>
+<script type="text/javascript" src="../js/jquery-1.8.2.js"></script>
+<script type="text/javascript" src="../js/jquery.mousewheel.js"></script>
+<script type="text/javascript" src="../js/d3.v2.js"></script>
+<script type="text/javascript" src="../js/RequestAnimationFrame.js"></script>
+<script type="text/javascript" src="../js/three.js"></script>
+<script type="text/javascript" src="../js/d3gl.js"></script>
+<script type="text/javascript">
+$(function(){
+// get some data
+var stress = [
+    {lat: 37.7750, lon: -122.4183, density: Math.random()},
+    {lat: 37.3041, lon: -121.8727, density: Math.random()},
+    {lat: 40.7142, lon: -74.0064, density: Math.random()},
+    {lat: 38.8900, lon: -77.0300, density: Math.random()},
+    {lat: 37.4419, lon: -122.1419, density: Math.random()},
+    {lat: 34.0522, lon: -118.2428, density: Math.random()},
+    {lat: 37.5833, lon: 127.0000, density: Math.random()},
+    {lat: 35.1508, lon: 129.0567, density: Math.random()},
+];
+
+// create a d3gl globe
+var globe = d3.gl.globe()
+    .width(400).height(400)
+    .texture("http://dcpos.ch/d3gl/img/earth-blank.png");
+
+var heatmap = globe.heatmap()
+    .data(stress)
+    .latitude(function(d) {
+        return d.lat;
+    })
+    .longitude(function(d) {
+        return d.lon;
+    })
+    .density(function(d) {
+        return d.density;
+    });
+
+// "mars" is almost a placeholder here; it might as well been "pug",
+// since we don't use it to customize the globe instance
+d3.select("body").selectAll("div")
+    .data(["earth"]).enter()
+    .append("div").attr("class", "mars")
+    .call(globe);
+});
+</script>
+</body>
+</html>
