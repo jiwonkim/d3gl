@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>D3GL Apple</title>
+    <link rel="stylesheet" href="../css/demo.css" />
+</head>
+<body>
+
+<h1>Hello Apple!</h1>
+
+<script type="text/javascript" src="../js/jquery-1.8.2.js"></script>
+<script type="text/javascript" src="../js/jquery.mousewheel.js"></script>
+<script type="text/javascript" src="../js/d3.v2.js"></script>
+<script type="text/javascript" src="../js/RequestAnimationFrame.js"></script>
+<script type="text/javascript" src="../js/three.js"></script>
+<script type="text/javascript" src="../js/d3gl.js"></script>
+<!--TODO: add collada loader when minifying-->
+<script type="text/javascript" src="../js/OBJLoader.js"></script>
+<!-- All scripts above are included here:
+<script type="text/javascript" src="../js/d3gl.min.js"></script> -->
+
+<script type="text/javascript">
+$(function(){
+var meshes = [
+    {mesh: "../models/apple/apple.obj", texture: "../img/apple-tex.jpg"},
+    {mesh: "../models/apple/apple.obj", texture: "../img/apple-yellow-tex.jpg"},
+    {mesh: "../models/apple/apple.obj", texture: "../img/apple-poison-tex.jpg"},
+];
+var model = d3.gl.model()
+    .width(300).height(300)
+    .mesh(function(d, i) { return d.mesh; })
+    .texture(function(d, i) { return d.texture; });
+
+d3.select("body").selectAll("span")
+    .data(meshes).enter().append("span")
+    .call(model);
+    
+});
+
+</script>
+</body>
+</html>

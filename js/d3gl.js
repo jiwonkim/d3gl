@@ -361,13 +361,11 @@ d3.gl.globe = function(){
         gl.textures = {};
 
         // load textures
-        console.log("loading textures");
         var canvas = document.createElement("canvas");
         canvas.width = 128;
         canvas.height = 128;
         var texUrl = fnTex(d);
         gl.textures.base = THREE.ImageUtils.loadTexture(texUrl, null, function(){
-            console.log("textures loaded");
             start();
         });
         gl.atmosphere = fnAtmosphere(d);
@@ -657,8 +655,8 @@ d3.gl.globe = function(){
     }
 
     /* globe.points
-     * * lat
-     * * lon
+     * * latitude
+     * * longitude
      * * color
      * * radius 
      */
@@ -1492,4 +1490,401 @@ d3.gl.globe = function(){
 ].join("\n");
 
     return globe;
+};
+
+d3.gl.model = function() {
+    // *** see PROPERTIES
+    // viewport dimensions, in pixels
+    var width = 400;
+    var height = 400;
+
+    // *** PRIVATE
+    var zoom = 2.0, rotation = {"lat":0,"lon":0};
+    var shaders = {}; // hardcoded strings, see bottom
+    var fnMesh, fnTex, fnScale;
+    var overlayTex = [];
+
+    // event handlers
+    var eventHandlers = {
+        /* mouse handlers */
+        'mousedown':[],
+        'mousemove':[],
+        'mouseup':[],
+        'click':[],
+        'dblclick':[],
+        /* fired before each render */
+        'update':[]
+    };
+
+	// *** CONSTANTS
+	var VIEW_ANGLE = 45,
+	    NEAR = 0.01,
+	    FAR = 100;
+    var MOUSE_SENSITIVITY = 0.3; // degrees rotated per pixel
+    var ZOOM_SENSITIVITY = 0.1; // (0 = no effect, 1 = infinite)
+    var MIN_ZOOM = 0.5, MAX_ZOOM = 4;
+
+    function model(g) {
+        g.each(modelRender);
+    }
+
+    function modelRender(d, i) {
+        // validate 
+        if(this.tagName == "canvas") throw "D3GL creates its own canvas elements. "+
+            "Render into a <div>, not directly into a <canvas>."
+
+        // gl stores all the rendering state for each individual globe.
+        // remember that a call to d3.gl.model() may result in multiple model (one per datum)
+        var gl = {};
+        gl.meshes = {model: []};
+        gl.textures = {};
+        gl.element = this; // the D3 primitive: one dom element, one datum
+        gl.datum = d;
+        gl.index = i;
+
+        var meshUrl = fnMesh(d);
+        var texUrl = fnTex(d);
+        var loader = new THREE.OBJLoader(); //TODO: change loader with file
+        loader.addEventListener('load', function(evt) {
+            gl.obj = {};
+            gl.obj.mesh = evt.content.children[0];
+            gl.obj.bbox = getBoundingBox(gl.obj.mesh);
+            gl.obj.scale = fnScale ? fnScale(d) : 1.;
+            gl.textures.base = THREE.ImageUtils.loadTexture(texUrl, null, function(){
+                start();
+            });
+        } );
+        loader.load(meshUrl);
+
+        function start() {
+            initGL(gl); // set up scene, transform, etc
+            initModel(gl); // pre-process model for display and add to scene
+            initControls(gl, gl.renderer.domElement); // mouse zoom+rotate
+            initStyle(gl.renderer.domElement); // <canvas> style
+            gl.element.appendChild(gl.renderer.domElement);
+
+            function render() {
+                // update
+                fireEvent("update", null);
+
+                // draw the 2D (texture) overlays
+                var context = gl.overlayCanvas.getContext("2d");
+                context.setTransform(1,0,0,1,0,0); // identity
+                context.width = gl.overlayCanvas.width;
+                context.height = gl.overlayCanvas.height;
+                context.clearRect(0,0,context.width,context.height);
+                for(var i = 0; i < overlayTex.length; i++){
+                    overlayTex[i](gl, context, d);
+                }
+                gl.textures.overlay.needsUpdate = true; // tell 3js to update
+                
+                // appropriately rotate & zoom
+                Object.keys(gl.meshes).forEach(function(key) {
+                    var meshes = gl.meshes[key];
+                    meshes.forEach(function(m) {
+                        m.rotation.x = rotation.lat*Math.PI/180; 
+                        m.rotation.y = -rotation.lon*Math.PI/180;
+                        m.updateMatrix();
+                    });
+                });
+                gl.camera.position.z = 1+zoom;
+
+                // render scene
+                gl.renderer.render(gl.scene, gl.camera);
+                
+                // schedule next render
+                requestAnimationFrame(render);
+            }
+            render();
+        }
+
+    }
+
+    // *** INIT FUNCTIONS
+    function initGL(gl) {
+        var camera = new THREE.PerspectiveCamera(
+            VIEW_ANGLE, width/height, NEAR, FAR);
+        camera.position.z = 2;
+
+        var scene = new THREE.Scene();
+
+        // create hidden canvas element for texture manipulation
+        gl.overlayCanvas = document.createElement("canvas");
+        // width and height are dictated by base texture
+        gl.overlayCanvas.width = gl.textures.base.image.width; 
+        gl.overlayCanvas.height = gl.textures.base.image.height;
+        gl.textures.overlay = new THREE.Texture(gl.overlayCanvas);
+
+        // Lights
+        scene.add( new THREE.AmbientLight(0x333333) );
+
+        var directionalLight = new THREE.DirectionalLight(0xcccccc);
+        directionalLight.position.x = 0;
+        directionalLight.position.y = 0.5;
+        directionalLight.position.z = 4;
+        directionalLight.position.normalize();
+        scene.add( directionalLight );
+
+        var pointLight = new THREE.PointLight(0x333333);
+        pointLight.position = directionalLight.position;
+        scene.add(pointLight);
+
+        var renderer = new THREE.WebGLRenderer();
+        renderer.setSize(width, height);
+
+        gl.camera = camera;
+        gl.scene = scene;
+        gl.renderer = renderer;
+        window.gl = gl;
+    }
+
+    function initModel(gl) {
+        // create mesh with coupled texture for loaded obj file
+        gl.material = initMaterial(shaders.model, gl.textures);
+        gl.model = new THREE.Mesh(gl.obj.mesh.geometry, gl.material);
+        gl.model.matrixAutoUpdate = false;
+
+        // find appropriate scale for object
+        var w = gl.obj.bbox.max.x - gl.obj.bbox.min.x;
+        var h = gl.obj.bbox.max.y - gl.obj.bbox.min.y;
+        var depth = gl.obj.bbox.max.z - gl.obj.bbox.min.z;
+        var scale = 1.5/Math.max(w, Math.max(h, depth));
+        scale *= gl.obj.scale;
+        gl.model.scale.x = gl.model.scale.y = gl.model.scale.z = scale;
+
+        var centerPoint = new THREE.Vector3().add(gl.obj.bbox.min, gl.obj.bbox.max)
+            .multiplyScalar(0.5);
+        var centerTranslation = new THREE.Vector3().sub(
+            gl.model.position, centerPoint);//.multiplyScalar(scale);
+        // Below has strange problems with decomposing meshes
+        centerModel(gl.model, centerTranslation);
+        //gl.model.position.addSelf(centerTranslation);
+        gl.model.updateMatrix();
+        
+        gl.scene.add(gl.model); 
+        gl.meshes.model.push(gl.model);
+    }
+
+    function initControls(gl, elem){
+        var dragStart;
+        var latlon = null;
+        $(elem).mousedown(function(evt){
+            fireMouseEvent("mousedown", gl, evt);
+            evt.preventDefault();
+            dragStart = [evt.pageX, evt.pageY];
+        }).mousemove(function(evt){
+            fireMouseEvent("mousemove", gl, evt);
+            if(!dragStart) return;
+            dragUpdate(evt);
+            dragStart = [evt.pageX, evt.pageY]; 
+        }).mouseup(function(evt){
+            fireMouseEvent("mouseup", gl, evt);
+            if(!dragStart) return;
+            dragUpdate(evt);
+            dragStart = null;
+        }).mouseleave(function(evt){
+            if(!dragStart) return;
+            dragUpdate(evt);
+            dragStart = null;
+        }).click(function(evt){
+            fireMouseEvent("click", gl, evt);
+        }).dblclick(function(evt){
+            fireMouseEvent("dblclick", gl, evt);
+        }).mousewheel(function(evt, delta, dx, dy){
+            zoomUpdate(Math.pow(1-ZOOM_SENSITIVITY, dy));
+            evt.preventDefault();
+        });
+
+        $(document).keydown(function(evt){
+            var key = String.fromCharCode(evt.which).toLowerCase();
+            if(key=="w") zoomUpdate(1/1.2); // zoom in
+            else if(key=="s") zoomUpdate(1.2); // zoom out
+            else if(key=="a") rotation.lon -= 10;
+            else if(key=="d") rotation.lon += 10;
+            else return;
+            evt.preventDefault();
+        });
+
+        function zoomUpdate(z){
+            zoom *= z;
+            zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
+        }
+        function dragUpdate(evt){
+            rotation.lon -= (evt.pageX - dragStart[0])*MOUSE_SENSITIVITY*zoom;
+            rotation.lat += (evt.pageY - dragStart[1])*MOUSE_SENSITIVITY*zoom;
+        }
+    }
+
+    function initStyle(elem){
+        elem.style.cursor = "pointer";
+    }
+
+    function initMaterial(shaders, textures){
+        var uniforms = {
+            texBase: {
+                type: "t",
+                value: textures.base
+            },
+            texOverlay: {
+                type: "t",
+                value: textures.overlay
+            },
+        };
+        var material = new THREE.ShaderMaterial({
+            vertexShader: shaders.vertex,
+            fragmentShader: shaders.fragment,
+            uniforms: uniforms,
+        });
+
+        return material;
+    };
+
+    // *** MOUSE EVENT FUNCTIONS
+    function fireMouseEvent(name, gl, evt){
+        var handlers = eventHandlers[name];
+        if (handlers.length == 0) return;
+        evt.latlon = intersect(gl, evt);
+        evt.datum = gl.datum;
+        for(var i = 0; i < handlers.length; i++){
+            handlers[i](evt);
+        }
+    }
+    function fireEvent(name, evt) {
+        var handlers = eventHandlers[name];
+        if (handlers.length == 0) return;
+        for(var i = 0; i < handlers.length; i++){
+            handlers[i](evt);
+        }
+    }
+
+    // *** HELPER FUNCTIONS 
+    function centerModel(object, centerTranslation) {
+        if(object.geometry){
+            object.geometry.vertices.forEach(function(vertex) {
+                vertex.addSelf(centerTranslation);
+            });
+        }else{
+            for(var i in object.children){
+                child = object.children[i];
+                centerModel(child, centerTranslation);
+            }
+        } 
+    }
+
+    function getBoundingBox(mesh) {
+        if(!mesh.geometry) throw "D3GL Model only supports meshes with one geometry"
+        if(mesh.geometry.boundingBox) return mesh.geometry.boundingBox;
+        mesh.geometry.computeBoundingBox();
+        return mesh.geometry.boundingBox;
+    }
+
+    // *** PROPERTIES
+    model.width = function(val){
+        if(!arguments.length) return width;
+        width = val;
+        return model;
+    }
+    model.height = function(val){
+        if(!arguments.length) return height;
+        height = val;
+        return model;
+    }
+    model.mesh = function(val){
+        if(!arguments.length) return fnMesh;  
+        if(typeof val === "function") fnMesh = val;
+        else fnMesh = function(){return val;}
+        return model;
+    }
+    model.texture = function(val){
+        if(!arguments.length) return fnTex;  
+        if(typeof val === "function") fnTex = val;
+        else fnTex = function(){return val;}
+        return model;
+    }
+    model.overlay = function(val){
+        if(!arguments.length) return fnOverlay;  
+        if(typeof val === "function") fnOverlay = val;
+        else fnOverlay = function(){return val;}
+        return model;
+    }
+    model.scale = function(val){
+        if(!arguments.length) return fnScale;  
+        if(typeof val === "function") fnScale = val;
+        else fnScale = function(){return val;}
+        return model;
+    }
+    model.rotation = function(latlon){
+        if(!arguments.length) return rotation;
+        if(!latlon || !latlon.lat || !latlon.lon) throw "Invalid rotation()";
+        rotation = latlon;
+        return model;
+    }
+    model.zoom = function(z){
+        if(!arguments.length) return zoom;
+        if(!z || z<0) throw "Invalid zoom()";
+        zoom = z;
+        return model;
+    }
+
+    // *** PRIMITIVES
+
+    // painter
+    model.painter = function() {
+        var fnData = function(d) { return d; };
+        var fnPaint, img;
+        function painter(gl, context, datum) {
+            fnPaint(gl, context, fnData(datum));
+        }
+        painter.paint = function(val) {
+            if(arguments.length == 0) return fnPaint;
+            if(typeof val == "function") {
+                fnPaint = val;
+            } else if(typeof val == "string") {
+                img = new Image();
+                img.crossOrigin = '';
+                img.src = val;
+                fnPaint = function(gl, context, data) {
+                    if(img.complete) context.drawImage(img, 0, 0);
+                };
+            } else {
+                throw "The argument to paint should either be a canvas-rendering function" +
+                    " or a string that is the url of a texture";
+            }
+            return painter;
+        }
+        painter.data = function(val){
+            if(arguments.length == 0) return fnData;
+            if(typeof val == "function") fnData = val;
+            else fnData = function(){return val;};
+            return painter;
+        }
+       
+        overlayTex.push(painter);
+        return painter;
+    }
+
+    shaders.model = {};
+    shaders.model.vertex = [
+"// texture coordinate for vertex to be interpolated and passed into",
+"// fragment shader per fragment",
+"varying vec2 vUv;",
+"",
+"void main() {",
+"    vUv = uv;",
+"    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1);",
+"}"
+].join("\n");
+    shaders.model.fragment = [
+"varying vec2 vUv;",
+"uniform sampler2D texBase;    // background texture",
+"uniform sampler2D texOverlay; // canvas overlay texture",
+"",
+"void main() {",
+"    vec4 overlay = texture2D(texOverlay, vUv);",
+"    gl_FragColor = texture2D(texBase, vUv);",
+"    gl_FragColor = mix(gl_FragColor, overlay, overlay.a);",
+"}",
+].join("\n");
+
+    return model;
 };
