@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<head>
+  <style type="text/css">
+    body {
+        background: url('../img/creampaper.png');
+        font: 20pt "Trebuchet MS","Helvetica Neue",sans-serif;
+        color: #000;
+    }
+  </style>
+</head>
+<body>
+<h1>Homicide Rates</h1>
+
+<script type="text/javascript" src="../js/jquery-1.8.2.js"></script>
+<script type="text/javascript" src="../js/jquery.mousewheel.js"></script>
+<script type="text/javascript" src="../js/d3.v2.js"></script>
+<script type="text/javascript" src="../js/RequestAnimationFrame.js"></script>
+<script type="text/javascript" src="../js/three.js"></script>
+<script type="text/javascript" src="../js/d3gl.js"></script>
+<!-- All scripts above are included here:
+<script type="text/javascript" src="../js/d3gl.min.js"></script> -->
+
+<script type="text/javascript">
+
+$(function() {
+  $.getJSON('../data/avg_number_of_homicides_per_country_per_100000_1995_to_2011.json', function(data) {
+
+    $("#detail").html(data['_legend']['avg_count']);
+    $("#source").html(data['_legend']['data']);
+
+    var globe = d3.gl.globe()
+      .width(500).height(500)
+      .texture("../img/earth-blank.png");
+
+    // Scale: any number greater than 40000 would be bright red
+    var high = 30000;
+
+    var heatmap = globe.heatmap()
+      .data(function(d) { return d['data']; })
+      .latitude(function(d) { return d['latitude']; })
+      .longitude(function(d) { return d['longitude']; })
+      .density(function(d) { return d['avg_count'] / high; })
+      .radius(80);
+
+    d3.select("body").append("div")
+        .attr("id", "globe")
+        .datum(data).call(globe);
+  });
+});
+
+</script>
+<p id="detail"></p>
+<p id="source"></p>
+
+</body>
+</html>

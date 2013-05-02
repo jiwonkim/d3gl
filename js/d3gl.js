@@ -1238,11 +1238,13 @@ d3.gl.globe = function(){
         var heatCanvas = document.createElement("canvas"); // hidden canvas
         var gradientCanvas = document.createElement("canvas");
 
-        var fnLat, fnLon;
-        var fnDensity; // takes uv coord and returns density [0, 1]
+        var fnLat, fnLon; // returns latitude and longitude for data point
+        var fnDensity; // takes data object and returns density [0, 1]
+
         var radius, gradient;
         var heatmapImg;
-        var update = true;
+
+        var update = true; // heatmap is manually updated
         function heatmap(gl, context, datum) {
             if(update) {
                 heatmapImg = renderHeatmap(gl, context, fnData(datum));
