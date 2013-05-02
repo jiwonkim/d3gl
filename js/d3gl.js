@@ -1053,9 +1053,6 @@ d3.gl.globe = function(){
     };
 
 
-
-
-
     /**
      * ARCS
      */
@@ -1210,7 +1207,7 @@ d3.gl.globe = function(){
     /*
      * Free-form painting onto the globe texture.
      */
-    globe.painter = function(){
+    globe.painter = function() {
         var fnData = function(d) { return d; };
         var fnPaint;
         function painter(gl, context, datum) {
@@ -1231,6 +1228,134 @@ d3.gl.globe = function(){
         
         overlayTex.push(painter);
         return painter;
+    }
+
+    // heatmap    
+    globe.heatmap = function() {
+        var fnData = function(d) { return d; };
+        var heatCanvas = document.createElement("canvas"); // hidden canvas
+        var gradientCanvas = document.createElement("canvas");
+
+        var fnLat, fnLon; // returns latitude and longitude for data point
+        var fnDensity; // takes data object and returns density [0, 1]
+
+        var radius, gradient;
+        var heatmapImg;
+
+        var update = true; // heatmap is manually updated
+        function heatmap(gl, context, datum) {
+            if(update) {
+                heatmapImg = renderHeatmap(gl, context, fnData(datum));
+                update = false;
+            }
+            context.drawImage(heatmapImg, 0, 0, context.width, context.height);
+        }
+
+        function renderHeatmap(gl, context, data) {
+            var rx = context.width;
+            var ry = context.height;
+            heatCanvas.width = rx;
+            heatCanvas.height = ry;
+            var heatContext = heatCanvas.getContext("2d");
+            heatContext.clearRect(0, 0, rx, ry);
+
+            // set up gradient
+            if(!gradient) {
+                gradient = {};
+                gradient.stops = { 0.4: "rgb(0,0,255)", 0.5: "rgb(0,255,255)",
+                    0.6: "rgb(0,255,0)", 0.8: "yellow", 0.95: "rgb(255,0,0)"};
+                gradient.length = gradientCanvas.width = 100;
+                gradientCanvas.height = 10;
+                var gradientContext = gradientCanvas.getContext("2d");
+                var linearGradient = gradientContext.createLinearGradient(0, 0, 100, 10);
+
+                Object.keys(gradient.stops).forEach(function(key) {
+                    linearGradient.addColorStop(key, gradient.stops[key]);
+                });
+
+                gradientContext.fillStyle = linearGradient;
+                gradientContext.fillRect(0, 0, 100, 10);
+                gradient.data = gradientContext.getImageData(0, 5, 100, 5).data;
+            }
+            
+            // set shadow properties
+            if(!radius) radius = 0.01*rx; // default radius is 1% of width
+            heatContext.shadowOffsetX = 20000;
+            heatContext.shadowOffsetY = 20000;
+            heatContext.shadowBlur = radius;
+
+            // for each data, draw a shadow
+            data.forEach(function(d) {
+                // get properties for data element
+                var lat = parseFloat(fnLat(d));
+                var lon = parseFloat(fnLon(d));
+                var density = fnDensity(d);
+                //var pradius = radius * context.width / 360.0;
+                var plat = ry * (1-(lat + 90)/180);
+                var plon = rx * (lon + 180)/360;
+
+                // draw shadow
+                heatContext.shadowColor = 'rgba(0, 0, 0,'+density+')';
+                heatContext.beginPath();
+                heatContext.arc(plon-20000, plat-20000, radius, 0, 2*Math.PI, true);
+                heatContext.closePath();
+                heatContext.fill();
+            });
+
+            // color the shadows according to density
+            var pixels = heatContext.getImageData(0, 0, rx, ry);
+            for(var r=0; r<ry; r++) {
+                for(var c=0; c<rx; c++) {
+                    var idx = (c + r*rx)*4;
+                    var density = pixels.data[idx + 3]/255;
+                    var offset = (Math.floor(gradient.length * density))*4;
+                    pixels.data[idx] = gradient.data[offset];
+                    pixels.data[idx + 1] = gradient.data[offset + 1];
+                    pixels.data[idx + 2] = gradient.data[offset + 2];
+                }
+            }
+            heatContext.clearRect(0, 0, rx, ry);
+            heatContext.putImageData(pixels, 0, 0);
+
+            var map = new Image();
+            map.src = heatCanvas.toDataURL("image/png");
+            return map;
+        }
+
+        heatmap.data = function(val) {
+            if(arguments.length == 0) return fnData;
+            if(typeof val == "function") fnData = val;
+            else fnData = function(){return val;};
+            return heatmap;
+        }
+
+        heatmap.radius = function(val) {
+            if(arguments.length == 0) return radius;
+            radius = val;
+            return heatmap;
+        }
+
+        heatmap.latitude = function(val) {
+            if(arguments.length == 0) return fnLat;
+            if(typeof val == "function") fnLat = val;
+            return heatmap;
+        }
+
+        heatmap.longitude = function(val) {
+            if(arguments.length == 0) return fnLon;
+            if(typeof val == "function") fnLon = val;
+            return heatmap;
+        }
+
+        heatmap.density = function(val) {
+            if(arguments.length == 0) return fnDensity;
+            if(typeof val == "function") fnDensity = val;
+            else fnDensity = function(){return val;};
+            return heatmap;
+        }
+
+        overlayTex.push(heatmap);
+        return heatmap;
     }
 
     /// *** SHADERS
@@ -1736,125 +1861,6 @@ d3.gl.model = function() {
        
         overlayTex.push(painter);
         return painter;
-    }
-
-    // heatmap    
-    model.heatmap = function() {
-        var fnData = function(d) { return d; };
-        var heatCanvas = document.createElement("canvas"); // hidden canvas
-        $("body").append(heatCanvas); // for debugging
-        var gradientCanvas = document.createElement("canvas");
-        $("body").append(gradientCanvas); // for debugging
-        var fnUv; // funtion that take data elem and returns uv coords [0, 1]
-        var fnDensity; // takes uv coord and returns density [0, 1]
-        var radius, gradient;
-        var heatmapImg;
-        var update = true;
-        function heatmap(gl, context, datum) {
-            if(update) {
-                heatmapImg = renderHeatmap(gl, context, fnData(datum));
-                update = false;
-            }
-            context.drawImage(heatmapImg, 0, 0, context.width, context.height);
-        }
-
-        function renderHeatmap(gl, context, data) {
-            var rx = context.width;
-            var ry = context.height;
-            heatCanvas.width = rx;
-            heatCanvas.height = ry;
-            var heatContext = heatCanvas.getContext("2d");
-            heatContext.clearRect(0, 0, rx, ry);
-
-            // set up gradient
-            if(!gradient) {
-                gradient = {};
-                gradient.stops = { 0.4: "rgb(0,0,255)", 0.5: "rgb(0,255,255)", 0.6: "rgb(0,255,0)", 0.8: "yellow", 0.95: "rgb(255,0,0)"};
-                gradient.length = gradientCanvas.width = 100;
-                gradientCanvas.height = 10;
-                var gradientContext = gradientCanvas.getContext("2d");
-                var linearGradient = gradientContext.createLinearGradient(0, 0, 100, 10);
-
-                Object.keys(gradient.stops).forEach(function(key) {
-                    linearGradient.addColorStop(key, gradient.stops[key]);
-                });
-
-                gradientContext.fillStyle = linearGradient;
-                gradientContext.fillRect(0, 0, 100, 10);
-                gradient.data = gradientContext.getImageData(0, 5, 100, 5).data;
-            }
-            
-            // set shadow properties
-            if(!radius) radius = 0.1*rx; // default radius is 10% of width
-            heatContext.shadowOffsetX = 20000;
-            heatContext.shadowOffsetY = 20000;
-            heatContext.shadowBlur = radius;
-
-            // for each data, draw a shadow
-            data.forEach(function(d) {
-                // get properties for data element
-                var uv = fnUv(d);                
-                var density = fnDensity(d);
-                var x = rx*uv[0];
-                var y = ry*uv[1];
-
-                // draw shadow
-                heatContext.shadowColor = 'rgba(0, 0, 0,'+density+')';
-                heatContext.beginPath();
-                heatContext.arc(x-20000, y-20000, radius, 0, 2*Math.PI, true);
-                heatContext.closePath();
-                heatContext.fill();
-            });
-
-            // color the shadows according to density
-            var pixels = heatContext.getImageData(0, 0, rx, ry);
-            for(var r=0; r<ry; r++) {
-                for(var c=0; c<rx; c++) {
-                    var idx = (c + r*rx)*4;
-                    var density = pixels.data[idx + 3]/255;
-                    var offset = (Math.floor(gradient.length * density))*4;
-                    pixels.data[idx] = gradient.data[offset];
-                    pixels.data[idx + 1] = gradient.data[offset + 1];
-                    pixels.data[idx + 2] = gradient.data[offset + 2];
-                }
-            }
-            heatContext.clearRect(0, 0, rx, ry);
-            heatContext.putImageData(pixels, 0, 0);
-
-            var map = new Image();
-            map.src = heatCanvas.toDataURL("image/png");
-            return map;
-        }
-
-        heatmap.data = function(val) {
-            if(arguments.length == 0) return fnData;
-            if(typeof val == "function") fnData = val;
-            else fnData = function(){return val;};
-            return heatmap;
-        }
-
-        heatmap.radius = function(val) {
-            if(arguments.length == 0) return radius;
-            radius = val;
-            return heatmap;
-        }
-
-        heatmap.uv = function(val) {
-            if(arguments.length == 0) return fnUv;
-            if(typeof val == "function") fnUv = val;
-            else fnUv = function(){return val;};
-            return heatmap;
-        }
-
-        heatmap.density = function(val) {
-            if(arguments.length == 0) return fnDensity;
-            if(typeof val == "function") fnDensity = val;
-            else fnDensity = function(){return val;};
-            return heatmap;
-        }
-
-        overlayTex.push(heatmap);
-        return heatmap;
     }
 
     shaders.model = {};
