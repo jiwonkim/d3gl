@@ -378,7 +378,7 @@ d3.gl.globe = function(){
             gl.element.appendChild(gl.renderer.domElement);
             
             // called 60 times per second
-            function render(){
+            function render() {
                 // update
                 fireEvent("update", null);
                 updateAnimations();
@@ -1502,7 +1502,6 @@ d3.gl.model = function() {
     var zoom = 2.0, rotation = {"lat":0,"lon":0};
     var shaders = {}; // hardcoded strings, see bottom
     var fnMesh, fnTex, fnScale;
-    var overlayTex = [];
 
     // event handlers
     var eventHandlers = {
@@ -1543,18 +1542,17 @@ d3.gl.model = function() {
         gl.index = i;
 
         var meshUrl = fnMesh(d);
-        var texUrl = fnTex(d);
-        var loader = new THREE.OBJLoader(); //TODO: change loader with file
-        loader.addEventListener('load', function(evt) {
+
+        gl.loader = new THREE.JSONLoader();
+        gl.loader.load(meshUrl, function(geometry, materials) {
             gl.obj = {};
-            gl.obj.mesh = evt.content.children[0];
-            gl.obj.bbox = getBoundingBox(gl.obj.mesh);
+            gl.obj.geometry = geometry;
+            gl.obj.materials = materials;
+            gl.obj.bbox = getBoundingBox(gl.obj.geometry);
             gl.obj.scale = fnScale ? fnScale(d) : 1.;
-            gl.textures.base = THREE.ImageUtils.loadTexture(texUrl, null, function(){
-                start();
-            });
-        } );
-        loader.load(meshUrl);
+
+            start();
+        });
 
         function start() {
             initGL(gl); // set up scene, transform, etc
@@ -1563,29 +1561,17 @@ d3.gl.model = function() {
             initStyle(gl.renderer.domElement); // <canvas> style
             gl.element.appendChild(gl.renderer.domElement);
 
+            // Called per frame
             function render() {
                 // update
                 fireEvent("update", null);
 
-                // draw the 2D (texture) overlays
-                var context = gl.overlayCanvas.getContext("2d");
-                context.setTransform(1,0,0,1,0,0); // identity
-                context.width = gl.overlayCanvas.width;
-                context.height = gl.overlayCanvas.height;
-                context.clearRect(0,0,context.width,context.height);
-                for(var i = 0; i < overlayTex.length; i++){
-                    overlayTex[i](gl, context, d);
-                }
-                gl.textures.overlay.needsUpdate = true; // tell 3js to update
-                
                 // appropriately rotate & zoom
                 Object.keys(gl.meshes).forEach(function(key) {
-                    var meshes = gl.meshes[key];
-                    meshes.forEach(function(m) {
-                        m.rotation.x = rotation.lat*Math.PI/180; 
-                        m.rotation.y = -rotation.lon*Math.PI/180;
-                        m.updateMatrix();
-                    });
+                    var m = gl.meshes[key];
+                    m.rotation.x = rotation.lat*Math.PI/180; 
+                    m.rotation.y = -rotation.lon*Math.PI/180;
+                    m.updateMatrix();
                 });
                 gl.camera.position.z = 1+zoom;
 
@@ -1608,15 +1594,8 @@ d3.gl.model = function() {
 
         var scene = new THREE.Scene();
 
-        // create hidden canvas element for texture manipulation
-        gl.overlayCanvas = document.createElement("canvas");
-        // width and height are dictated by base texture
-        gl.overlayCanvas.width = gl.textures.base.image.width; 
-        gl.overlayCanvas.height = gl.textures.base.image.height;
-        gl.textures.overlay = new THREE.Texture(gl.overlayCanvas);
-
         // Lights
-        scene.add( new THREE.AmbientLight(0x333333) );
+        scene.add( new THREE.AmbientLight(0xdddddd) );
 
         var directionalLight = new THREE.DirectionalLight(0xcccccc);
         directionalLight.position.x = 0;
@@ -1625,7 +1604,7 @@ d3.gl.model = function() {
         directionalLight.position.normalize();
         scene.add( directionalLight );
 
-        var pointLight = new THREE.PointLight(0x333333);
+        var pointLight = new THREE.PointLight(0xcccccc);
         pointLight.position = directionalLight.position;
         scene.add(pointLight);
 
@@ -1639,9 +1618,8 @@ d3.gl.model = function() {
     }
 
     function initModel(gl) {
-        // create mesh with coupled texture for loaded obj file
-        gl.material = initMaterial(shaders.model, gl.textures);
-        gl.model = new THREE.Mesh(gl.obj.mesh.geometry, gl.material);
+        gl.model = new THREE.Mesh(gl.obj.geometry,
+            new THREE.MeshFaceMaterial(gl.obj.materials));
         gl.model.matrixAutoUpdate = false;
 
         // find appropriate scale for object
@@ -1655,14 +1633,12 @@ d3.gl.model = function() {
         var centerPoint = new THREE.Vector3().add(gl.obj.bbox.min, gl.obj.bbox.max)
             .multiplyScalar(0.5);
         var centerTranslation = new THREE.Vector3().sub(
-            gl.model.position, centerPoint);//.multiplyScalar(scale);
-        // Below has strange problems with decomposing meshes
+            gl.model.position, centerPoint);
         centerModel(gl.model, centerTranslation);
-        //gl.model.position.addSelf(centerTranslation);
         gl.model.updateMatrix();
         
         gl.scene.add(gl.model); 
-        gl.meshes.model.push(gl.model);
+        gl.meshes.model = gl.model;
     }
 
     function initControls(gl, elem){
@@ -1719,26 +1695,6 @@ d3.gl.model = function() {
         elem.style.cursor = "pointer";
     }
 
-    function initMaterial(shaders, textures){
-        var uniforms = {
-            texBase: {
-                type: "t",
-                value: textures.base
-            },
-            texOverlay: {
-                type: "t",
-                value: textures.overlay
-            },
-        };
-        var material = new THREE.ShaderMaterial({
-            vertexShader: shaders.vertex,
-            fragmentShader: shaders.fragment,
-            uniforms: uniforms,
-        });
-
-        return material;
-    };
-
     // *** MOUSE EVENT FUNCTIONS
     function fireMouseEvent(name, gl, evt){
         var handlers = eventHandlers[name];
@@ -1771,11 +1727,11 @@ d3.gl.model = function() {
         } 
     }
 
-    function getBoundingBox(mesh) {
-        if(!mesh.geometry) throw "D3GL Model only supports meshes with one geometry"
-        if(mesh.geometry.boundingBox) return mesh.geometry.boundingBox;
-        mesh.geometry.computeBoundingBox();
-        return mesh.geometry.boundingBox;
+    function getBoundingBox(geometry) {
+        if(!geometry) throw "D3GL Model only supports meshes with one geometry"
+        if(geometry.boundingBox) return geometry.boundingBox;
+        geometry.computeBoundingBox();
+        return geometry.boundingBox;
     }
 
     // *** PROPERTIES
@@ -1801,12 +1757,19 @@ d3.gl.model = function() {
         else fnTex = function(){return val;}
         return model;
     }
-    model.overlay = function(val){
-        if(!arguments.length) return fnOverlay;  
-        if(typeof val === "function") fnOverlay = val;
-        else fnOverlay = function(){return val;}
-        return model;
+/** SET MATERIAL WITH DIFFUSE TEXTURE **/
+    model.setTexture = function(textureUrl) {
+        return material = {
+            "colorAmbient" : [0.4, 0.4, 0.4],
+            "colorDiffuse" : [0.6, 0.6, 0.6],
+            "colorSpecular" : [1.0, 1.0, 1.0],
+            "mapDiffuse" : textureUrl,
+            "specularCoef" : 0.0,
+            "transparency" : 1.0
+        };
+         
     }
+/** **/
     model.scale = function(val){
         if(!arguments.length) return fnScale;  
         if(typeof val === "function") fnScale = val;
