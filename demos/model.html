@@ -34,15 +34,18 @@ $(function(){
   }, ".");
 */
 var meshes = [
-    {mesh: "../models/legoman3/legoman3.js", texture: "../img/apple-tex.jpg"},
-    {mesh: "../models/apple/apple.js", texture: "../img/apple-tex.jpg"},
-    //{mesh: "../models/apple/apple.obj", texture: "../img/apple-yellow-tex.jpg"},
+    //{mesh: "../models/legoman3/legoman3.js", texture: "../img/apple-tex.jpg"},
+    {mesh: "../models/apple/apple.js", texture: "../img/apple-poison-tex.jpg"},
+    {mesh: "../models/apple/apple.js", texture: "../img/apple-yellow-tex.jpg"},
     //{mesh: "../models/apple/apple.obj", texture: "../img/apple-poison-tex.jpg"},
 ];
 var model = d3.gl.model()
     .width(300).height(300)
-    .mesh(function(d, i) { return d.mesh; })
-    .texture(function(d, i) { return d.texture; });
+    .mesh(function(datum, index) { return datum.mesh; })
+    .texture(function(datum, index, materialIndex) {
+        if (materialIndex == 0) return datum.texture;
+        else return null;
+    });
 
 d3.select("body").selectAll("span")
     .data(meshes).enter().append("span")

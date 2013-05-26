@@ -1503,6 +1503,8 @@ d3.gl.model = function() {
     var shaders = {}; // hardcoded strings, see bottom
     var fnMesh, fnTex, fnScale;
 
+    var updateMaterials = [];
+
     // event handlers
     var eventHandlers = {
         /* mouse handlers */
@@ -1532,11 +1534,9 @@ d3.gl.model = function() {
         if(this.tagName == "canvas") throw "D3GL creates its own canvas elements. "+
             "Render into a <div>, not directly into a <canvas>."
 
-        // gl stores all the rendering state for each individual globe.
+        // gl stores all the rendering state for each individual model.
         // remember that a call to d3.gl.model() may result in multiple model (one per datum)
         var gl = {};
-        gl.meshes = {model: []};
-        gl.textures = {};
         gl.element = this; // the D3 primitive: one dom element, one datum
         gl.datum = d;
         gl.index = i;
@@ -1544,10 +1544,10 @@ d3.gl.model = function() {
         var meshUrl = fnMesh(d);
 
         gl.loader = new THREE.JSONLoader();
-        gl.loader.load(meshUrl, function(geometry, materials) {
+        gl.loader.load(meshUrl, function(g, m) {
             gl.obj = {};
-            gl.obj.geometry = geometry;
-            gl.obj.materials = materials;
+            gl.obj.geometry = g;
+            gl.obj.materials = m;
             gl.obj.bbox = getBoundingBox(gl.obj.geometry);
             gl.obj.scale = fnScale ? fnScale(d) : 1.;
 
@@ -1556,7 +1556,7 @@ d3.gl.model = function() {
 
         function start() {
             initGL(gl); // set up scene, transform, etc
-            initModel(gl); // pre-process model for display and add to scene
+            initModel(gl, true); // pre-process model for display and add to scene
             initControls(gl, gl.renderer.domElement); // mouse zoom+rotate
             initStyle(gl.renderer.domElement); // <canvas> style
             gl.element.appendChild(gl.renderer.domElement);
@@ -1566,14 +1566,42 @@ d3.gl.model = function() {
                 // update
                 fireEvent("update", null);
 
+                // Only update materials if fnTex is defined by user and
+                // either the updateMaterials is undefined (which means that
+                // user called TEXTURE before models were initialized with data,
+                // or if updateMaterials is set to true by the TEXTURE function.
+                var shouldUpdateMaterials = fnTex &&
+                    (updateMaterials[gl.index] === undefined ||
+                      updateMaterials[gl.index]);
+
+                // If user wants to swap a texture of a material,
+                // re-initialize the model with swapped materials created
+                // from the user-defined texture. 
+                if (shouldUpdateMaterials) {
+                    for (var mIdx = 0; mIdx < gl.obj.materials.length; mIdx++) {
+                        var texUrl = fnTex(gl.datum, gl.index, mIdx);
+                        if (texUrl) {
+                            gl.obj.materials[mIdx] = gl.loader.createMaterial(
+                                getMaterialParamsForTexture(texUrl),
+                                "." // relative path is current directory for url
+                            );
+                        }
+                    }
+
+                    // Set fnTex back to null so that we don't apply the
+                    // same changes again and again per frame.
+                    updateMaterials[gl.index] = false;
+
+                    // Remove old model and add newly initialized one.
+                    gl.scene.remove(gl.model);
+                    initModel(gl, false); // Don't translate vertices again
+                }
+
                 // appropriately rotate & zoom
-                Object.keys(gl.meshes).forEach(function(key) {
-                    var m = gl.meshes[key];
-                    m.rotation.x = rotation.lat*Math.PI/180; 
-                    m.rotation.y = -rotation.lon*Math.PI/180;
-                    m.updateMatrix();
-                });
-                gl.camera.position.z = 1+zoom;
+                gl.model.rotation.x = rotation.lat*Math.PI/180; 
+                gl.model.rotation.y = -rotation.lon*Math.PI/180;
+                gl.model.updateMatrix();
+                gl.camera.position.z = 1 + zoom;
 
                 // render scene
                 gl.renderer.render(gl.scene, gl.camera);
@@ -1617,7 +1645,7 @@ d3.gl.model = function() {
         window.gl = gl;
     }
 
-    function initModel(gl) {
+    function initModel(gl, adjustCenter) {
         gl.model = new THREE.Mesh(gl.obj.geometry,
             new THREE.MeshFaceMaterial(gl.obj.materials));
         gl.model.matrixAutoUpdate = false;
@@ -1630,15 +1658,16 @@ d3.gl.model = function() {
         scale *= gl.obj.scale;
         gl.model.scale.x = gl.model.scale.y = gl.model.scale.z = scale;
 
-        var centerPoint = new THREE.Vector3().add(gl.obj.bbox.min, gl.obj.bbox.max)
-            .multiplyScalar(0.5);
-        var centerTranslation = new THREE.Vector3().sub(
-            gl.model.position, centerPoint);
-        centerModel(gl.model, centerTranslation);
-        gl.model.updateMatrix();
+        if (adjustCenter) {
+            var centerPoint = new THREE.Vector3().add(gl.obj.bbox.min, gl.obj.bbox.max)
+                .multiplyScalar(0.5);
+            var centerTranslation = new THREE.Vector3().sub(
+                gl.model.position, centerPoint);
+            centerModel(gl.model, centerTranslation);
+            gl.model.updateMatrix();
+        }
         
         gl.scene.add(gl.model); 
-        gl.meshes.model = gl.model;
     }
 
     function initControls(gl, elem){
@@ -1734,6 +1763,17 @@ d3.gl.model = function() {
         return geometry.boundingBox;
     }
 
+    function getMaterialParamsForTexture(texturePath) {
+         return {
+            "colorAmbient" : [0.4, 0.4, 0.4],
+            "colorDiffuse" : [0.6, 0.6, 0.6],
+            "colorSpecular" : [1.0, 1.0, 1.0],
+            "mapDiffuse" : texturePath,
+            "specularCoef" : 0.0,
+            "transparency" : 1.0
+        };
+    }
+
     // *** PROPERTIES
     model.width = function(val){
         if(!arguments.length) return width;
@@ -1751,15 +1791,24 @@ d3.gl.model = function() {
         else fnMesh = function(){return val;}
         return model;
     }
+    /* fnTex takes 3 args: d, i, materialIndex */
     model.texture = function(val){
         if(!arguments.length) return fnTex;  
         if(typeof val === "function") fnTex = val;
         else fnTex = function(){return val;}
+
+        // We don't want to update materials for every frame.
+        // So we set a flag per datum, which is toggled off
+        // after the updates are made.
+        for (var i = 0; i < updateMaterials.length; i++) {
+          updateMaterials[i] = true;
+        }
         return model;
     }
 /** SET MATERIAL WITH DIFFUSE TEXTURE **/
-    model.setTexture = function(textureUrl) {
-        return material = {
+/*
+    model.setTexture = function(index, textureUrl) {
+        materials[index] = {
             "colorAmbient" : [0.4, 0.4, 0.4],
             "colorDiffuse" : [0.6, 0.6, 0.6],
             "colorSpecular" : [1.0, 1.0, 1.0],
@@ -1767,8 +1816,9 @@ d3.gl.model = function() {
             "specularCoef" : 0.0,
             "transparency" : 1.0
         };
-         
+        return model;
     }
+*/
 /** **/
     model.scale = function(val){
         if(!arguments.length) return fnScale;  
