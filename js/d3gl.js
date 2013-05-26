@@ -1501,8 +1501,12 @@ d3.gl.model = function() {
     // *** PRIVATE
     var zoom = 2.0, rotation = {"lat":0,"lon":0};
     var shaders = {}; // hardcoded strings, see bottom
-    var fnMesh, fnTex, fnScale;
+    var fnMesh, fnTex, fnColor, fnScale;
 
+    // boolean array to indicate whether the model at index i
+    // should have its materials updated according to the
+    // fnTex and fnColor functions defined by model.texture and
+    // model.color, respectively.
     var updateMaterials = [];
 
     // event handlers
@@ -1518,12 +1522,19 @@ d3.gl.model = function() {
     };
 
 	// *** CONSTANTS
-	var VIEW_ANGLE = 45,
+	  var VIEW_ANGLE = 45,
 	    NEAR = 0.01,
 	    FAR = 100;
     var MOUSE_SENSITIVITY = 0.3; // degrees rotated per pixel
     var ZOOM_SENSITIVITY = 0.1; // (0 = no effect, 1 = infinite)
     var MIN_ZOOM = 0.5, MAX_ZOOM = 4;
+    var DEFAULT_MATERIAL_PARAMS = {
+        "colorAmbient" : [0.4, 0.4, 0.4],
+        "colorDiffuse" : [0.6, 0.6, 0.6],
+        "colorSpecular" : [1.0, 1.0, 1.0],
+        "specularCoef" : 0.0,
+        "transparency" : 1.0
+    };
 
     function model(g) {
         g.each(modelRender);
@@ -1574,18 +1585,30 @@ d3.gl.model = function() {
                     (updateMaterials[gl.index] === undefined ||
                       updateMaterials[gl.index]);
 
-                // If user wants to swap a texture of a material,
+                // If user wants to swap a material,
                 // re-initialize the model with swapped materials created
                 // from the user-defined texture. 
                 if (shouldUpdateMaterials) {
                     for (var mIdx = 0; mIdx < gl.obj.materials.length; mIdx++) {
-                        var texUrl = fnTex(gl.datum, gl.index, mIdx);
-                        if (texUrl) {
+                        var params = {};
+
+                        var texUrl = fnTex && fnTex(gl.datum, gl.index, mIdx);
+                        if (texUrl) params['mapDiffuse'] = texUrl;
+
+                        var color = fnColor && fnColor(gl.datum, gl.index, mIdx);
+                        if (color) params['colorDiffuse'] = color;
+                        
+                        // Try to get a full set of material params constructed
+                        // from user-defined values. If successful, swap the
+                        // material at the current material index for this model.
+                        var materialParams = getMaterialParams(params);
+                        if (materialParams) {
                             gl.obj.materials[mIdx] = gl.loader.createMaterial(
-                                getMaterialParamsForTexture(texUrl),
+                                materialParams,
                                 "." // relative path is current directory for url
                             );
                         }
+                        
                     }
 
                     // Set fnTex back to null so that we don't apply the
@@ -1763,15 +1786,15 @@ d3.gl.model = function() {
         return geometry.boundingBox;
     }
 
-    function getMaterialParamsForTexture(texturePath) {
-         return {
-            "colorAmbient" : [0.4, 0.4, 0.4],
-            "colorDiffuse" : [0.6, 0.6, 0.6],
-            "colorSpecular" : [1.0, 1.0, 1.0],
-            "mapDiffuse" : texturePath,
-            "specularCoef" : 0.0,
-            "transparency" : 1.0
-        };
+    /**
+     * Given a texture path, returns the object with auto-filled params
+     * that is readily passed into the createMaterial function to swap
+     * the material of the model at a particular index with the texture
+     * as the diffuse map.
+     */
+    function getMaterialParams(params) {
+        if (Object.keys(params).length === 0) return null; 
+        return $.extend({}, DEFAULT_MATERIAL_PARAMS, params);
     }
 
     // *** PROPERTIES
@@ -1779,23 +1802,46 @@ d3.gl.model = function() {
         if(!arguments.length) return width;
         width = val;
         return model;
-    }
+    };
     model.height = function(val){
         if(!arguments.length) return height;
         height = val;
         return model;
-    }
+    };
     model.mesh = function(val){
         if(!arguments.length) return fnMesh;  
         if(typeof val === "function") fnMesh = val;
         else fnMesh = function(){return val;}
         return model;
-    }
-    /* fnTex takes 3 args: d, i, materialIndex */
-    model.texture = function(val){
+    };
+    model.scale = function(val){
+        if(!arguments.length) return fnScale;  
+        if(typeof val === "function") fnScale = val;
+        else fnScale = function(){return val;}
+        return model;
+    };
+    model.rotation = function(latlon){
+        if(!arguments.length) return rotation;
+        if(!latlon || !latlon.lat || !latlon.lon) throw "Invalid rotation()";
+        rotation = latlon;
+        return model;
+    };
+    model.zoom = function(z){
+        if(!arguments.length) return zoom;
+        if(!z || z<0) throw "Invalid zoom()";
+        zoom = z;
+        return model;
+    };
+    /** Functions to swap materials for the model. The
+        functions passed in as args take 3 args:
+        datum, datumIndex, and materialIndex. For clarification,
+        one model has one datum and datumIndex. The model may
+        have many different materials that are indexed according
+        to the order they are defined in the model's JSON format. **/
+    model.texture = function(val) {
         if(!arguments.length) return fnTex;  
         if(typeof val === "function") fnTex = val;
-        else fnTex = function(){return val;}
+        else fnTex = function() { return val; };
 
         // We don't want to update materials for every frame.
         // So we set a flag per datum, which is toggled off
@@ -1804,40 +1850,20 @@ d3.gl.model = function() {
           updateMaterials[i] = true;
         }
         return model;
-    }
-/** SET MATERIAL WITH DIFFUSE TEXTURE **/
-/*
-    model.setTexture = function(index, textureUrl) {
-        materials[index] = {
-            "colorAmbient" : [0.4, 0.4, 0.4],
-            "colorDiffuse" : [0.6, 0.6, 0.6],
-            "colorSpecular" : [1.0, 1.0, 1.0],
-            "mapDiffuse" : textureUrl,
-            "specularCoef" : 0.0,
-            "transparency" : 1.0
-        };
+    };
+    model.color = function(val) {
+        if(!arguments.length) return fnColor;
+        if(typeof val === "function") fnColor = val;
+        else fnColor = function(){return val;}
+
+        // We don't want to update materials for every frame.
+        // So we set a flag per datum, which is toggled off
+        // after the updates are made.
+        for (var i = 0; i < updateMaterials.length; i++) {
+          updateMaterials[i] = true;
+        }
         return model;
-    }
-*/
-/** **/
-    model.scale = function(val){
-        if(!arguments.length) return fnScale;  
-        if(typeof val === "function") fnScale = val;
-        else fnScale = function(){return val;}
-        return model;
-    }
-    model.rotation = function(latlon){
-        if(!arguments.length) return rotation;
-        if(!latlon || !latlon.lat || !latlon.lon) throw "Invalid rotation()";
-        rotation = latlon;
-        return model;
-    }
-    model.zoom = function(z){
-        if(!arguments.length) return zoom;
-        if(!z || z<0) throw "Invalid zoom()";
-        zoom = z;
-        return model;
-    }
+    };
 
     // *** PRIMITIVES
 
