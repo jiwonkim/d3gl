@@ -1501,7 +1501,7 @@ d3.gl.model = function() {
     // *** PRIVATE
     var zoom = 2.0, rotation = {"lat":0,"lon":0};
     var shaders = {}; // hardcoded strings, see bottom
-    var fnMesh, fnTex, fnColor, fnScale;
+    var fnMesh, fnTex, fnColor, fnMaterial, fnScale;
 
     // boolean array to indicate whether the model at index i
     // should have its materials updated according to the
@@ -1581,7 +1581,7 @@ d3.gl.model = function() {
                 // either the updateMaterials is undefined (which means that
                 // user called TEXTURE before models were initialized with data,
                 // or if updateMaterials is set to true by the TEXTURE function.
-                var shouldUpdateMaterials = fnTex &&
+                var shouldUpdateMaterials = 
                     (updateMaterials[gl.index] === undefined ||
                       updateMaterials[gl.index]);
 
@@ -1597,6 +1597,11 @@ d3.gl.model = function() {
 
                         var color = fnColor && fnColor(gl.datum, gl.index, mIdx);
                         if (color) params['colorDiffuse'] = color;
+
+                        var material = fnMaterial && fnMaterial(dl.datum, gl.index, mIdx);
+                        if (material) {
+                            $.extend(params, material);
+                        }
                         
                         // Try to get a full set of material params constructed
                         // from user-defined values. If successful, swap the
@@ -1655,7 +1660,7 @@ d3.gl.model = function() {
         directionalLight.position.normalize();
         scene.add( directionalLight );
 
-        var pointLight = new THREE.PointLight(0xcccccc);
+        var pointLight = new THREE.PointLight(0x333333);
         pointLight.position = directionalLight.position;
         scene.add(pointLight);
 
@@ -1834,10 +1839,16 @@ d3.gl.model = function() {
     };
     /** Functions to swap materials for the model. The
         functions passed in as args take 3 args:
-        datum, datumIndex, and materialIndex. For clarification,
-        one model has one datum and datumIndex. The model may
+        datum, datumIndex, and materialIndex. 
+
+        One model has one datum and datumIndex. The model may
         have many different materials that are indexed according
-        to the order they are defined in the model's JSON format. **/
+        to the order they are defined in the model's JSON format.
+        Models that are not uv-mapped will not properly display
+        texture even if specified with model.texture. **/
+
+    // The function passed in should take three arguments and
+    // return the texture path as a string.
     model.texture = function(val) {
         if(!arguments.length) return fnTex;  
         if(typeof val === "function") fnTex = val;
@@ -1851,14 +1862,28 @@ d3.gl.model = function() {
         }
         return model;
     };
+    // The function passed in should take three arguments and
+    // return the color [r, g, b] where 0 <= r,g,b <= 1
     model.color = function(val) {
         if(!arguments.length) return fnColor;
         if(typeof val === "function") fnColor = val;
         else fnColor = function(){return val;}
 
-        // We don't want to update materials for every frame.
-        // So we set a flag per datum, which is toggled off
-        // after the updates are made.
+        for (var i = 0; i < updateMaterials.length; i++) {
+          updateMaterials[i] = true;
+        }
+        return model;
+    };
+    // The function passsed in takes three arguments and returns
+    // an object with appropriate materials params as specified
+    // in the THREE.js JSON format.
+    // An example return value would be:
+    // {'colorSpecular': [0.3, 0.3, 0.3], 'colorDiffuse': [0.5, 0.5, 0.5]}
+    model.material = function(val) {
+        if(!arguments.length) return fnMaterial;
+        if(typeof val === "function") fnMaterial = val;
+        else fnMaterial = function(){return val;}
+
         for (var i = 0; i < updateMaterials.length; i++) {
           updateMaterials[i] = true;
         }
