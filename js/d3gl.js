@@ -398,14 +398,7 @@ d3.gl.globe = function(){
                 Object.keys(gl.meshes).forEach(function(key) {
                     var meshes = gl.meshes[key];
                     meshes.forEach(function(m) {
-                      /*
                         m.matrixAutoUpdate = false;
-                        m.matrixWorld = new THREE.Matrix4();
-                        m.matrixWorld.makeRotationX(rotation.lat*Math.PI/180);
-                        m.matrixWorld.makeRotationY(-rotation.lon*Math.PI/180);
-                        m.matrixWorld.makeRotationY(m.orientation.y);
-                        m.matrixWorld.makeRotationX(m.orientation.x);
-                        */
                         m.rotation.x = rotation.lat*Math.PI/180 + m.orientation.x; 
                         m.rotation.y = -rotation.lon*Math.PI/180 + m.orientation.y;
                         m.updateMatrix();
@@ -818,20 +811,12 @@ d3.gl.globe = function(){
                 var bar = barObjs[elemId]; 
                 if(!bar){
                     // create only if neccessary
-                    var uniforms = {
-                        color: {
-                            type: "c",
-                            value: new THREE.Color("0x"+state.color.slice(1))
-                        }
-                    };
                     bar = new THREE.Mesh(
-                        new THREE.CubeGeometry(1,1,1),
-                        new THREE.ShaderMaterial({
-                            vertexShader: shaders.bars.vertex,
-                            fragmentShader: shaders.bars.fragment,
-                            uniforms: uniforms
-                        }));
-                    bar.uniforms = uniforms;
+                        new THREE.CubeGeometry(1, 1, 1),
+                        new THREE.MeshBasicMaterial({
+                            color: state.color
+                        })
+                    );
                     bar.state = {
                         latRad: 0,
                         lonRad: 0,
@@ -863,8 +848,7 @@ d3.gl.globe = function(){
                 bar.geometry.vertices[6] = new THREE.Vector3(x0,y0,z0);
                 bar.geometry.vertices[7] = new THREE.Vector3(x0,y0,z1);
                 bar.geometry.verticesNeedUpdate = true;
-                bar.uniforms.color.value = new THREE.Color(
-                    "0x"+bar.state.color.slice(1));
+                bar.material.color = new THREE.Color(state.color);
                 bar.orientation = new THREE.Vector3(-bar.state.latRad, bar.state.lonRad, 0);
             });
         }
@@ -1445,23 +1429,6 @@ d3.gl.globe = function(){
 "}",
 ].join("\n");
 
-    /**
-     * Bar shader. Creates bar charts on the globe.
-     */
-    shaders.bars = {};
-    shaders.bars.vertex = [
-"void main() {",
-"    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1);",
-"}"
-].join("\n");
-    shaders.bars.fragment = [
-"uniform vec3 color;",
-"",
-"void main() {",
-"    gl_FragColor = vec4(color, 1.0);",
-"}"
-].join("\n");
-    
     /**
      * Shader for atmospheric effect
      */
