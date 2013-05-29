@@ -14,9 +14,6 @@ d3.gl = function() {
     }
 
     /** PUBLIC **/
-    // viewport dimensions, in pixels
-    var width = 400;
-    var height = 400;
     d3gl.width = function(val){
         if(!arguments.length) return width;
         width = val;
@@ -31,8 +28,10 @@ d3.gl = function() {
         else zoom = val;
     };
     d3gl.rotation = {"lat":0,"lon":0};
-
-    d3gl.mouseEventCallback;
+    d3gl.mouseEventCallback = function(val) {
+        if (arguments.length === 0) return mouseEventCallback;
+        else mouseEventCallback = val;
+    }
     d3gl.init = function(gl) {
         initGL(gl);
         initControls(gl, gl.renderer.domElement);
@@ -51,6 +50,10 @@ d3.gl = function() {
         }
         eventHandlers[eventName].push(callback);
     };
+    // To be called on each render loop
+    d3gl.update = function(gl) {
+        gl.camera.position.z = 1 + zoom;
+    }
 
     /** PRIVATE **/
     // variables
@@ -66,6 +69,11 @@ d3.gl = function() {
         // fired before each render
         'update':[]
     };
+    // viewport dimensions, in pixels
+    var width = 400;
+    var height = 400;
+    // user-defined callback function for when mouse events are fired
+    var mouseEventCallback;
     // constants
     var MIN_ZOOM = 0.5;
     var MAX_ZOOM = 4;
@@ -162,8 +170,8 @@ d3.gl = function() {
 
         // If the d3gl type has registered a callback for mouse events,
         // make the function call with the evt object
-        if (d3gl.mouseEventCallback) {
-            d3gl.mouseEventCallback(gl, evt);
+        if (mouseEventCallback) {
+            mouseEventCallback(gl, evt);
         }
         for(var i = 0; i < handlers.length; i++){
             handlers[i](evt);
@@ -220,9 +228,9 @@ d3.gl.globe = function(){
         gl.textures.base = THREE.ImageUtils.loadTexture(texUrl, null, function(){
 
             // Once textures are loaded, initialize WebGL for this globe and start rendering loop
-            d3gl.mouseEventCallback = function(gl, evt) {
+            d3gl.mouseEventCallback(function(gl, evt) {
                 evt.latlon = intersect(gl, evt);
-            };
+            });
             d3gl.init(gl);
 
             // Add globe-specific WebGL elements to scene
@@ -234,6 +242,8 @@ d3.gl.globe = function(){
             // Add update function
             d3gl.addEventHandler("update", updateOverlays);
             d3gl.addEventHandler("update", updateAnimations);
+            d3gl.addEventHandler("update", updateTransparency);
+            d3gl.addEventHandler("update", updateMatrices);
 
             // Start rendering loop
             globeRender(gl);
@@ -241,21 +251,9 @@ d3.gl.globe = function(){
     }
     // called 60 times per second
     function globeRender(gl) {
-        // update
+        d3gl.update(gl);
         d3gl.fireEvent("update", gl);
-        if(fnTransparency) gl.uniforms.transparency.value = fnTransparency(gl.datum);
-        
-        // draw the objects in scene
-        Object.keys(gl.meshes).forEach(function(key) {
-            var meshes = gl.meshes[key];
-            meshes.forEach(function(m) {
-                m.matrixAutoUpdate = false;
-                m.rotation.x = d3gl.rotation.lat*Math.PI/180 + m.orientation.x; 
-                m.rotation.y = -d3gl.rotation.lon*Math.PI/180 + m.orientation.y;
-                m.updateMatrix();
-            });
-        });
-        gl.camera.position.z = 1+d3gl.zoom();
+
         //gl.scene.overrideMaterial = true;
         gl.renderer.sortObjects = false;
         gl.renderer.sortElements = false;
@@ -410,10 +408,13 @@ d3.gl.globe = function(){
         if (intersected.length === 0) return null;
         var point = intersected[0].point;
 
+        // phi is the angle from the y (up) axis, range [0, pi]
+        // theta is the angle from the x axis in the x-z plane, range [-pi, pi]
         var theta, phi, lat, lon;
-        phi = Math.acos(point.y); // 0 <= phi <= pi
-        theta = Math.atan(point.x / point.z); // -pi <= theta <= pi 
+        phi = Math.acos(point.y);
+        theta = Math.atan(point.x / point.z);
 
+        // TODO: make plane and generalize offsets such as 90 and -90
         lat = 90 - phi*180/Math.PI + d3gl.rotation.lat;
         lon = -90 + theta*180/Math.PI + d3gl.rotation.lon;
 
@@ -425,10 +426,6 @@ d3.gl.globe = function(){
         if(lat < -90 || lat > 90 || lon < -180 || lon > 180) throw "lat/lon error "+lat+"/"+lon;
 
         return [lat, lon];
-    }
-
-    function mouseEventCallback(gl, evt) {
-        evt.latlon = intersect(gl, evt);
     }
 
     /** UPDATE FUNCTIONS **/
@@ -474,6 +471,22 @@ d3.gl.globe = function(){
             overlayTex[i](gl, context);
         }
         gl.textures.overlay.needsUpdate = true; // tell 3js to update
+    }
+    function updateTransparency(gl) {
+        if(fnTransparency) {
+          gl.uniforms.transparency.value = fnTransparency(gl.datum);
+        }
+    }
+    function updateMatrices(gl) {
+        Object.keys(gl.meshes).forEach(function(key) {
+            var meshes = gl.meshes[key];
+            meshes.forEach(function(m) {
+                m.matrixAutoUpdate = false;
+                m.rotation.x = d3gl.rotation.lat*Math.PI/180 + m.orientation.x; 
+                m.rotation.y = -d3gl.rotation.lon*Math.PI/180 + m.orientation.y;
+                m.updateMatrix();
+            });
+        });
     }
 
 
@@ -828,6 +841,8 @@ d3.gl.globe = function(){
         return points;
     };
 
+    //TODO: Bug. When dragging left and right, bars migrate. When dragging
+    // up and down, bars are fine.
     globe.bars = function() {
         var identityFn = function(d) {
             return d;
@@ -1577,15 +1592,13 @@ d3.gl.model = function() {
     // Called per frame
     function modelRender(gl) {
         // update
+        d3gl.update(gl);
         d3gl.fireEvent("update", gl);
-        
-        //updateModelMaterials(gl);
 
         // appropriately rotate & zoom
         gl.model.rotation.x = d3gl.rotation.lat*Math.PI/180; 
         gl.model.rotation.y = -d3gl.rotation.lon*Math.PI/180;
         gl.model.updateMatrix();
-        gl.camera.position.z = 1 + d3gl.zoom();
 
         // render scene
         gl.renderer.render(gl.scene, gl.camera);
