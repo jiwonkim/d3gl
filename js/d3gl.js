@@ -75,6 +75,19 @@ d3.gl = function() {
         translateModelVertices(model, centerTranslation);
         model.updateMatrix();
     };
+    d3gl.centerPointcloud = function(pointcloud) {
+        var count = pointcloud.geometry.vertices.length;
+        var centerPoint = new THREE.Vector3();
+        pointcloud.geometry.vertices.forEach(function(vertex) {
+            centerPoint.add(vertex);
+        });
+        centerPoint.multiplyScalar(1/count);
+        var centerTranslation = new THREE.Vector3().subVectors(
+            pointcloud.position, centerPoint);
+        
+        translateModelVertices(pointcloud, centerTranslation);
+        pointcloud.updateMatrix();
+    };
     function translateModelVertices(model, translation) {
         if(model.geometry){
             model.geometry.vertices.forEach(function(vertex) {
@@ -91,16 +104,6 @@ d3.gl = function() {
     function getBoundingBox(model) {
         if (!model || !model.geometry) return null;
         model.geometry.computeBoundingBox();
-        var min = model.geometry.boundingBox.min;
-        var max = model.geometry.boundingBox.max;
-
-        min.x = parseFloat(min.x);
-        min.y = parseFloat(min.y);
-        min.z = parseFloat(min.z);
-        max.x = parseFloat(max.x);
-        max.y = parseFloat(max.y);
-        max.z = parseFloat(max.z);
-
         return model.geometry.boundingBox;
     }
 
@@ -1928,7 +1931,8 @@ d3.gl.model = function() {
 d3.gl.pointcloud = function() {
     var d3gl = d3.gl();
     
-    var fnData, fnColor;
+    /** User-defined callback functions **/
+    var fnData, fnScale, fnColor;
 
     var pointcloud = function(g) {
         g.each(pointcloudInit);
@@ -1944,6 +1948,7 @@ d3.gl.pointcloud = function() {
 
         d3gl.init(gl);
         initPointcloud(gl);
+
         // Add canvas to DOM
         gl.element.appendChild(gl.renderer.domElement);
         pointcloudRender(gl);
@@ -1952,7 +1957,7 @@ d3.gl.pointcloud = function() {
     function pointcloudRender(gl) {
         d3gl.update(gl);
         d3gl.fireEvent("update", null);
-        
+
         gl.pointcloud.rotation.x = d3gl.rotation.lat*Math.PI/180;
         gl.pointcloud.rotation.y = -d3gl.rotation.lon*Math.PI/180;
         gl.renderer.render(gl.scene, gl.camera);
@@ -1960,25 +1965,24 @@ d3.gl.pointcloud = function() {
     }
 
     function initPointcloud(gl) {
-        var vertices;
+        var vertices, scale;
         if (!fnData || !(vertices = fnData(gl.datum, gl.index))) {
             throw "Please specify point cloud data using pointcloud.data";
         }
+        scale = fnScale ? fnScale(gl.datum, gl.index) : 1;
         
         gl.points = new THREE.Geometry();
         gl.material = new THREE.ParticleBasicMaterial({
-            color: 0x000000, size: 0.1 });
+            color: 0x000000, size: 0.01 });
 
         vertices.forEach(function(vertex) {
-            gl.points.vertices.push(
-                new THREE.Vector3(vertex.x, vertex.y, vertex.z));
+            gl.points.vertices.push(new THREE.Vector3(
+                parseFloat(vertex.x), parseFloat(vertex.y), parseFloat(vertex.z)));
         });
 
         gl.pointcloud = new THREE.ParticleSystem(gl.points, gl.material);
-        d3gl.scaleModel(gl.pointcloud, 1.);
-
-        // TODO: with center model, point cloud disappears :(
-        //d3gl.centerModel(gl.pointcloud);
+        d3gl.scaleModel(gl.pointcloud, scale);
+        d3gl.centerPointcloud(gl.pointcloud);
         gl.scene.add(gl.pointcloud);
     }
 
@@ -1990,7 +1994,12 @@ d3.gl.pointcloud = function() {
         var ret = d3gl.height(val);
         return ret ? ret : pointcloud;
     };
-
+    pointcloud.scale = function(val) {
+        if (arguments.length===0) return fnScale;
+        if (typeof val === "function") fnScale = val;
+        else fnScale = function() { return val; };
+        return pointcloud;
+    };
     pointcloud.data = function(val) {
         if (arguments.length===0) return fnData;
         if (typeof val === "function") fnData = val;
