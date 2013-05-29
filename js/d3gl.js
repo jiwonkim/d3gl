@@ -10,6 +10,9 @@ if(!d3 || !jQuery || !THREE || !requestAnimationFrame){
 }
 
 d3.gl = {};
+d3.gl.base = {
+
+};
 d3.gl.globe = function(){
     // *** see PROPERTIES
     // viewport dimensions, in pixels
@@ -264,7 +267,7 @@ d3.gl.globe = function(){
         gl.projector.unprojectVector(vector, gl.camera);
         var ray = new THREE.Ray(
             gl.camera.position,
-            vector.subSelf(gl.camera.position).normalize()
+            vector.sub(gl.camera.position).normalize()
         );
 
         // ray-sphere intersection for unit sphere centered at (0, 0, 0)
@@ -274,7 +277,7 @@ d3.gl.globe = function(){
         var det = b*b - 4*a*c;
         if(det < 0) return null; // no intersection
         var t = (-b - Math.sqrt(det))/(2*a);
-        var point = ray.direction.clone().multiplyScalar(t).addSelf(ray.origin);
+        var point = ray.direction.clone().multiplyScalar(t).add(ray.origin);
 
         // convert to lat/lon
         var rlat = rotation.lat*Math.PI/180;
@@ -378,7 +381,7 @@ d3.gl.globe = function(){
             gl.element.appendChild(gl.renderer.domElement);
             
             // called 60 times per second
-            function render(){
+            function render() {
                 // update
                 fireEvent("update", null);
                 updateAnimations();
@@ -1098,7 +1101,6 @@ d3.gl.globe = function(){
                     Math.cos(latE)*Math.cos(lonE),
                     Math.sin(latE),
                     -Math.cos(latE)*Math.sin(lonE));
-                //console.log("WAT? "+vS.x+","+vS.y+","+vS.z+","+vE.x+","+vE.y+","+vE.z);
                 var vAxis = new THREE.Vector3().cross(vS, vE);
                 var theta = vS.angleTo(vE);
                 var npoints = 100;
@@ -1501,8 +1503,13 @@ d3.gl.model = function() {
     // *** PRIVATE
     var zoom = 2.0, rotation = {"lat":0,"lon":0};
     var shaders = {}; // hardcoded strings, see bottom
-    var fnMesh, fnTex, fnScale;
-    var overlayTex = [];
+    var fnMesh, fnTex, fnColor, fnMaterial, fnScale;
+
+    // boolean array to indicate whether the model at index i
+    // should have its materials updated according to the
+    // fnTex and fnColor functions defined by model.texture and
+    // model.color, respectively.
+    var updateMaterials = [];
 
     // event handlers
     var eventHandlers = {
@@ -1517,12 +1524,19 @@ d3.gl.model = function() {
     };
 
 	// *** CONSTANTS
-	var VIEW_ANGLE = 45,
+	  var VIEW_ANGLE = 45,
 	    NEAR = 0.01,
 	    FAR = 100;
     var MOUSE_SENSITIVITY = 0.3; // degrees rotated per pixel
     var ZOOM_SENSITIVITY = 0.1; // (0 = no effect, 1 = infinite)
     var MIN_ZOOM = 0.5, MAX_ZOOM = 4;
+    var DEFAULT_MATERIAL_PARAMS = {
+        "colorAmbient" : [0.4, 0.4, 0.4],
+        "colorDiffuse" : [0.6, 0.6, 0.6],
+        "colorSpecular" : [1.0, 1.0, 1.0],
+        "specularCoef" : 0.0,
+        "transparency" : 1.0
+    };
 
     function model(g) {
         g.each(modelRender);
@@ -1533,61 +1547,91 @@ d3.gl.model = function() {
         if(this.tagName == "canvas") throw "D3GL creates its own canvas elements. "+
             "Render into a <div>, not directly into a <canvas>."
 
-        // gl stores all the rendering state for each individual globe.
+        // gl stores all the rendering state for each individual model.
         // remember that a call to d3.gl.model() may result in multiple model (one per datum)
         var gl = {};
-        gl.meshes = {model: []};
-        gl.textures = {};
         gl.element = this; // the D3 primitive: one dom element, one datum
         gl.datum = d;
         gl.index = i;
 
         var meshUrl = fnMesh(d);
-        var texUrl = fnTex(d);
-        var loader = new THREE.OBJLoader(); //TODO: change loader with file
-        loader.addEventListener('load', function(evt) {
+
+        gl.loader = new THREE.JSONLoader();
+        gl.loader.load(meshUrl, function(g, m) {
             gl.obj = {};
-            gl.obj.mesh = evt.content.children[0];
-            gl.obj.bbox = getBoundingBox(gl.obj.mesh);
+            gl.obj.geometry = g;
+            gl.obj.materials = m;
+            gl.obj.bbox = getBoundingBox(gl.obj.geometry);
             gl.obj.scale = fnScale ? fnScale(d) : 1.;
-            gl.textures.base = THREE.ImageUtils.loadTexture(texUrl, null, function(){
-                start();
-            });
-        } );
-        loader.load(meshUrl);
+
+            start();
+        });
 
         function start() {
             initGL(gl); // set up scene, transform, etc
-            initModel(gl); // pre-process model for display and add to scene
+            initModel(gl, true); // pre-process model for display and add to scene
             initControls(gl, gl.renderer.domElement); // mouse zoom+rotate
             initStyle(gl.renderer.domElement); // <canvas> style
             gl.element.appendChild(gl.renderer.domElement);
 
+            // Called per frame
             function render() {
                 // update
                 fireEvent("update", null);
 
-                // draw the 2D (texture) overlays
-                var context = gl.overlayCanvas.getContext("2d");
-                context.setTransform(1,0,0,1,0,0); // identity
-                context.width = gl.overlayCanvas.width;
-                context.height = gl.overlayCanvas.height;
-                context.clearRect(0,0,context.width,context.height);
-                for(var i = 0; i < overlayTex.length; i++){
-                    overlayTex[i](gl, context, d);
+                // Only update materials if fnTex is defined by user and
+                // either the updateMaterials is undefined (which means that
+                // user called TEXTURE before models were initialized with data,
+                // or if updateMaterials is set to true by the TEXTURE function.
+                var shouldUpdateMaterials = 
+                    (updateMaterials[gl.index] === undefined ||
+                      updateMaterials[gl.index]);
+
+                // If user wants to swap a material,
+                // re-initialize the model with swapped materials created
+                // from the user-defined texture. 
+                if (shouldUpdateMaterials) {
+                    for (var mIdx = 0; mIdx < gl.obj.materials.length; mIdx++) {
+                        var params = {};
+
+                        var texUrl = fnTex && fnTex(gl.datum, gl.index, mIdx);
+                        if (texUrl) params['mapDiffuse'] = texUrl;
+
+                        var color = fnColor && fnColor(gl.datum, gl.index, mIdx);
+                        if (color) params['colorDiffuse'] = color;
+
+                        var material = fnMaterial && fnMaterial(dl.datum, gl.index, mIdx);
+                        if (material) {
+                            $.extend(params, material);
+                        }
+                        
+                        // Try to get a full set of material params constructed
+                        // from user-defined values. If successful, swap the
+                        // material at the current material index for this model.
+                        var materialParams = getMaterialParams(params);
+                        if (materialParams) {
+                            gl.obj.materials[mIdx] = gl.loader.createMaterial(
+                                materialParams,
+                                "." // relative path is current directory for url
+                            );
+                        }
+                        
+                    }
+
+                    // Set fnTex back to null so that we don't apply the
+                    // same changes again and again per frame.
+                    updateMaterials[gl.index] = false;
+
+                    // Remove old model and add newly initialized one.
+                    gl.scene.remove(gl.model);
+                    initModel(gl, false); // Don't translate vertices again
                 }
-                gl.textures.overlay.needsUpdate = true; // tell 3js to update
-                
+
                 // appropriately rotate & zoom
-                Object.keys(gl.meshes).forEach(function(key) {
-                    var meshes = gl.meshes[key];
-                    meshes.forEach(function(m) {
-                        m.rotation.x = rotation.lat*Math.PI/180; 
-                        m.rotation.y = -rotation.lon*Math.PI/180;
-                        m.updateMatrix();
-                    });
-                });
-                gl.camera.position.z = 1+zoom;
+                gl.model.rotation.x = rotation.lat*Math.PI/180; 
+                gl.model.rotation.y = -rotation.lon*Math.PI/180;
+                gl.model.updateMatrix();
+                gl.camera.position.z = 1 + zoom;
 
                 // render scene
                 gl.renderer.render(gl.scene, gl.camera);
@@ -1608,15 +1652,8 @@ d3.gl.model = function() {
 
         var scene = new THREE.Scene();
 
-        // create hidden canvas element for texture manipulation
-        gl.overlayCanvas = document.createElement("canvas");
-        // width and height are dictated by base texture
-        gl.overlayCanvas.width = gl.textures.base.image.width; 
-        gl.overlayCanvas.height = gl.textures.base.image.height;
-        gl.textures.overlay = new THREE.Texture(gl.overlayCanvas);
-
         // Lights
-        scene.add( new THREE.AmbientLight(0x333333) );
+        scene.add( new THREE.AmbientLight(0xdddddd) );
 
         var directionalLight = new THREE.DirectionalLight(0xcccccc);
         directionalLight.position.x = 0;
@@ -1635,13 +1672,13 @@ d3.gl.model = function() {
         gl.camera = camera;
         gl.scene = scene;
         gl.renderer = renderer;
+        gl.projector = new THREE.Projector();
         window.gl = gl;
     }
 
-    function initModel(gl) {
-        // create mesh with coupled texture for loaded obj file
-        gl.material = initMaterial(shaders.model, gl.textures);
-        gl.model = new THREE.Mesh(gl.obj.mesh.geometry, gl.material);
+    function initModel(gl, adjustCenter) {
+        gl.model = new THREE.Mesh(gl.obj.geometry,
+            new THREE.MeshFaceMaterial(gl.obj.materials));
         gl.model.matrixAutoUpdate = false;
 
         // find appropriate scale for object
@@ -1652,17 +1689,16 @@ d3.gl.model = function() {
         scale *= gl.obj.scale;
         gl.model.scale.x = gl.model.scale.y = gl.model.scale.z = scale;
 
-        var centerPoint = new THREE.Vector3().add(gl.obj.bbox.min, gl.obj.bbox.max)
-            .multiplyScalar(0.5);
-        var centerTranslation = new THREE.Vector3().sub(
-            gl.model.position, centerPoint);//.multiplyScalar(scale);
-        // Below has strange problems with decomposing meshes
-        centerModel(gl.model, centerTranslation);
-        //gl.model.position.addSelf(centerTranslation);
-        gl.model.updateMatrix();
+        if (adjustCenter) {
+            var centerPoint = new THREE.Vector3().addVectors(gl.obj.bbox.min, gl.obj.bbox.max)
+                .multiplyScalar(0.5);
+            var centerTranslation = new THREE.Vector3().subVectors(
+                gl.model.position, centerPoint);
+            centerModel(gl.model, centerTranslation);
+            gl.model.updateMatrix();
+        }
         
         gl.scene.add(gl.model); 
-        gl.meshes.model.push(gl.model);
     }
 
     function initControls(gl, elem){
@@ -1719,31 +1755,33 @@ d3.gl.model = function() {
         elem.style.cursor = "pointer";
     }
 
-    function initMaterial(shaders, textures){
-        var uniforms = {
-            texBase: {
-                type: "t",
-                value: textures.base
-            },
-            texOverlay: {
-                type: "t",
-                value: textures.overlay
-            },
-        };
-        var material = new THREE.ShaderMaterial({
-            vertexShader: shaders.vertex,
-            fragmentShader: shaders.fragment,
-            uniforms: uniforms,
-        });
-
-        return material;
-    };
+    function intersect(gl, evt) {
+        // cast a ray through the mouse
+        var vector = new THREE.Vector3(
+            (evt.offsetX / width)*2 - 1,
+            -(evt.offsetY / height)*2 + 1,
+            1.0
+        );
+        gl.projector.unprojectVector(vector, gl.camera);
+        var raycaster = new THREE.Raycaster(
+            gl.camera.position,
+            vector.sub(gl.camera.position).normalize()
+        );
+        
+        /*
+        var intersected = raycaster.intersectObject(gl.model);
+        if(intersected) {
+            //intersected[0].object.material.materials[0].emissive.setHex( 0xff0000 )
+        }
+        */
+    }
 
     // *** MOUSE EVENT FUNCTIONS
     function fireMouseEvent(name, gl, evt){
         var handlers = eventHandlers[name];
         if (handlers.length == 0) return;
-        evt.latlon = intersect(gl, evt);
+        intersect(gl, evt);
+        //evt.latlon = intersect(gl, evt);
         evt.datum = gl.datum;
         for(var i = 0; i < handlers.length; i++){
             handlers[i](evt);
@@ -1761,7 +1799,7 @@ d3.gl.model = function() {
     function centerModel(object, centerTranslation) {
         if(object.geometry){
             object.geometry.vertices.forEach(function(vertex) {
-                vertex.addSelf(centerTranslation);
+                vertex.add(centerTranslation);
             });
         }else{
             for(var i in object.children){
@@ -1771,11 +1809,22 @@ d3.gl.model = function() {
         } 
     }
 
-    function getBoundingBox(mesh) {
-        if(!mesh.geometry) throw "D3GL Model only supports meshes with one geometry"
-        if(mesh.geometry.boundingBox) return mesh.geometry.boundingBox;
-        mesh.geometry.computeBoundingBox();
-        return mesh.geometry.boundingBox;
+    function getBoundingBox(geometry) {
+        if(!geometry) throw "D3GL Model only supports meshes with one geometry"
+        if(geometry.boundingBox) return geometry.boundingBox;
+        geometry.computeBoundingBox();
+        return geometry.boundingBox;
+    }
+
+    /**
+     * Given a texture path, returns the object with auto-filled params
+     * that is readily passed into the createMaterial function to swap
+     * the material of the model at a particular index with the texture
+     * as the diffuse map.
+     */
+    function getMaterialParams(params) {
+        if (Object.keys(params).length === 0) return null; 
+        return $.extend({}, DEFAULT_MATERIAL_PARAMS, params);
     }
 
     // *** PROPERTIES
@@ -1783,46 +1832,94 @@ d3.gl.model = function() {
         if(!arguments.length) return width;
         width = val;
         return model;
-    }
+    };
     model.height = function(val){
         if(!arguments.length) return height;
         height = val;
         return model;
-    }
+    };
     model.mesh = function(val){
         if(!arguments.length) return fnMesh;  
         if(typeof val === "function") fnMesh = val;
         else fnMesh = function(){return val;}
         return model;
-    }
-    model.texture = function(val){
-        if(!arguments.length) return fnTex;  
-        if(typeof val === "function") fnTex = val;
-        else fnTex = function(){return val;}
-        return model;
-    }
-    model.overlay = function(val){
-        if(!arguments.length) return fnOverlay;  
-        if(typeof val === "function") fnOverlay = val;
-        else fnOverlay = function(){return val;}
-        return model;
-    }
+    };
     model.scale = function(val){
         if(!arguments.length) return fnScale;  
         if(typeof val === "function") fnScale = val;
         else fnScale = function(){return val;}
         return model;
-    }
+    };
     model.rotation = function(latlon){
         if(!arguments.length) return rotation;
         if(!latlon || !latlon.lat || !latlon.lon) throw "Invalid rotation()";
         rotation = latlon;
         return model;
-    }
+    };
     model.zoom = function(z){
         if(!arguments.length) return zoom;
         if(!z || z<0) throw "Invalid zoom()";
         zoom = z;
+        return model;
+    };
+    /** Functions to swap materials for the model. The
+        functions passed in as args take 3 args:
+        datum, datumIndex, and materialIndex. 
+
+        One model has one datum and datumIndex. The model may
+        have many different materials that are indexed according
+        to the order they are defined in the model's JSON format.
+        Models that are not uv-mapped will not properly display
+        texture even if specified with model.texture. **/
+
+    // The function passed in should take three arguments and
+    // return the texture path as a string.
+    model.texture = function(val) {
+        if(!arguments.length) return fnTex;  
+        if(typeof val === "function") fnTex = val;
+        else fnTex = function() { return val; };
+
+        // We don't want to update materials for every frame.
+        // So we set a flag per datum, which is toggled off
+        // after the updates are made.
+        for (var i = 0; i < updateMaterials.length; i++) {
+          updateMaterials[i] = true;
+        }
+        return model;
+    };
+    // The function passed in should take three arguments and
+    // return the color [r, g, b] where 0 <= r,g,b <= 1
+    model.color = function(val) {
+        if(!arguments.length) return fnColor;
+        if(typeof val === "function") fnColor = val;
+        else fnColor = function(){return val;}
+
+        for (var i = 0; i < updateMaterials.length; i++) {
+          updateMaterials[i] = true;
+        }
+        return model;
+    };
+    // The function passsed in takes three arguments and returns
+    // an object with appropriate materials params as specified
+    // in the THREE.js JSON format.
+    // An example return value would be:
+    // {'colorSpecular': [0.3, 0.3, 0.3], 'colorDiffuse': [0.5, 0.5, 0.5]}
+    model.material = function(val) {
+        if(!arguments.length) return fnMaterial;
+        if(typeof val === "function") fnMaterial = val;
+        else fnMaterial = function(){return val;}
+
+        for (var i = 0; i < updateMaterials.length; i++) {
+          updateMaterials[i] = true;
+        }
+        return model;
+    };
+    /** **/
+    model.on = function(eventName, callback){
+        if(typeof(eventHandlers[eventName])==="undefined"){
+            throw "unsupported event "+eventName;
+        }
+        eventHandlers[eventName].push(callback);
         return model;
     }
 
