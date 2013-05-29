@@ -9,33 +9,156 @@ if(!d3 || !jQuery || !THREE || !requestAnimationFrame){
     throw "D3GL requires D3, JQuery, ThreeJS, and RequestAnimationFrame";
 }
 
-d3.gl = {};
-d3.gl.base = {
+d3.gl = function() {
+    function d3gl() {
+    }
 
-};
-d3.gl.globe = function(){
-    // *** see PROPERTIES
+    /** PUBLIC **/
     // viewport dimensions, in pixels
-    var width = 400;
-    var height = 400;
-    // callbacks (globe-level. see shapes(), points(), etc)
-    var fnTex, fnTransparency;
-    // atmosphere is turned off by default
-    var fnAtmosphere = function(d) { return false; };
-    // event handlers
-    var eventHandlers = {
-        /* mouse handlers */
+    d3gl.width = 400;
+    d3gl.height = 400;
+
+    d3gl.zoom = function(val) {
+        if (arguments.length === 0) return zoom; 
+        else zoom = val;
+    };
+    d3gl.rotation = {"lat":0,"lon":0};
+
+    d3gl.init = function(gl, mouseEventCallback) {
+        d3gl.initGL(gl);
+        d3gl.initControls(gl, gl.renderer.domElement, mouseEventCallback);
+        d3gl.initStyle(gl.renderer.domElement); // <canvas> style
+    };
+    d3gl.eventHandlers = {
+        // mouse handlers
         'mousedown':[],
         'mousemove':[],
         'mouseup':[],
         'click':[],
         'dblclick':[],
-        /* fired before each render */
+        // fired before each render
         'update':[]
     };
+    d3gl.fireEvent = function(name, evt) {
+        var handlers = d3gl.eventHandlers[name];
+        if (handlers.length == 0) return;
+        for(var i = 0; i < handlers.length; i++){
+            handlers[i](evt);
+        }
+    }
+    // This is not quite as clean as
+    // an external stylesheet, but simpler for
+    // the end user.
+    d3gl.initStyle = function(elem) {
+        elem.style.cursor = "pointer";
+    }
+
+    d3gl.initControls = function(gl, elem, mouseEventCallback){
+        var latlon = null;
+        $(elem).mousedown(function(evt){
+            fireMouseEvent("mousedown", gl, evt, mouseEventCallback);
+            evt.preventDefault();
+            dragStart = [evt.pageX, evt.pageY];
+        }).mousemove(function(evt){
+            fireMouseEvent("mousemove", gl, evt, mouseEventCallback);
+            if(!dragStart) return;
+            dragUpdate(evt);
+            dragStart = [evt.pageX, evt.pageY]; 
+        }).mouseup(function(evt){
+            fireMouseEvent("mouseup", gl, evt, mouseEventCallback);
+            if(!dragStart) return;
+            dragUpdate(evt);
+            dragStart = null;
+        }).mouseleave(function(evt){
+            if(!dragStart) return;
+            dragUpdate(evt);
+            dragStart = null;
+        }).click(function(evt){
+            fireMouseEvent("click", gl, evt, mouseEventCallback);
+        }).dblclick(function(evt){
+            fireMouseEvent("dblclick", gl, evt, mouseEventCallback);
+        }).mousewheel(function(evt, delta, dx, dy){
+            zoomUpdate(Math.pow(1-ZOOM_SENSITIVITY, dy));
+            evt.preventDefault();
+        });
+
+        $(document).keydown(function(evt){
+            var key = String.fromCharCode(evt.which).toLowerCase();
+            if(key=="w") zoomUpdate(1/1.2); // zoom in
+            else if(key=="s") zoomUpdate(1.2); // zoom out
+            else if(key=="a") d3gl.rotation.lon -= 10;
+            else if(key=="d") d3gl.rotation.lon += 10;
+            else return;
+            evt.preventDefault();
+        });
+    }
+    d3gl.initGL = function(gl) {
+        var scene, camera, renderer;
+
+        // scene
+        scene = new THREE.Scene();
+
+        // camera
+        camera = new THREE.PerspectiveCamera(
+            VIEW_ANGLE, d3gl.width/d3gl.height,
+            NEAR, FAR);
+        camera.position.z = 2;
+        scene.add(camera);
+
+        // start the renderer
+        renderer = new THREE.WebGLRenderer({
+            antialias: true
+        });
+        renderer.setSize(d3gl.width, d3gl.height);
+
+        gl.scene = scene;
+        gl.camera = camera;
+        gl.renderer = renderer;
+    }
+
+    /** PRIVATE **/
+    // variables
+    var zoom = 2.0;
+    var dragStart = null;
+
+    // constants
+    var MIN_ZOOM = 0.5;
+    var MAX_ZOOM = 4;
+    var MOUSE_SENSITIVITY = 0.15; // degrees rotated per pixel
+    var ZOOM_SENSITIVITY = 0.1; // (0 = no effect, 1 = infinite)
+    var VIEW_ANGLE = 45,
+        NEAR = 0.01,
+        FAR = 100;
+
+    function zoomUpdate(val) {
+        zoom *= val;
+        zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
+    };
+    function dragUpdate (evt) {
+        d3gl.rotation.lon -= (evt.pageX - dragStart[0])*MOUSE_SENSITIVITY*zoom;
+        d3gl.rotation.lat += (evt.pageY - dragStart[1])*MOUSE_SENSITIVITY*zoom;
+    };
+    function fireMouseEvent (name, gl, evt, callback) {
+        var handlers = d3gl.eventHandlers[name];
+        if (handlers.length == 0) return;
+        evt.datum = gl.datum;
+        callback(gl, evt);
+        for(var i = 0; i < handlers.length; i++){
+            handlers[i](evt);
+        }
+    };
+    return d3gl;
+};
+d3.gl.globe = function(){
+    var d3gl = d3.gl();
+
+    // *** see PROPERTIES
+    // callbacks (globe-level. see shapes(), points(), etc)
+    var fnTex, fnTransparency;
+    // atmosphere is turned off by default
+    var fnAtmosphere = function(d) { return false; };
 
     // *** PRIVATE
-    var zoom = 2.0, rotation = {"lat":0,"lon":0};
     // overlays. these are functions that either render onto the globe tex (eg colored countries),
     // or which run after the globe itself to draw additional 3D elements (eg arcs)
     var overlayTex = []; // function(gl, context2d, datum)
@@ -44,13 +167,149 @@ d3.gl.globe = function(){
     // animation
     var anim = {};
 
-	// *** CONSTANTS
-	var VIEW_ANGLE = 45,
-	    NEAR = 0.01,
-	    FAR = 100;
-    var MOUSE_SENSITIVITY = 0.15; // degrees rotated per pixel
-    var ZOOM_SENSITIVITY = 0.1; // (0 = no effect, 1 = infinite)
-    var MIN_ZOOM = 0.5, MAX_ZOOM = 4;
+    // *** RENDER FUNCTION
+    // see http://bost.ocks.org/mike/chart/
+    function globe(g){
+        g.each(globeInit);
+    }
+    function globeInit(d,i){
+        // validate 
+        if(this.tagName == "canvas") throw "D3GL creates its own canvas elements. "+
+            "Render into a <div>, not directly into a <canvas>."
+
+        // gl stores all the rendering state for each individual globe.
+        // remember that a call to d3.gl.globe() may result in multiple globes (one per datum)
+        var gl = {};
+        gl.element = this; // the D3 primitive: one dom element, one datum
+        gl.datum = d;
+        gl.index = i;
+        gl.shaders = shaders.globe;
+        gl.textures = {};
+
+        // load textures
+        var canvas = document.createElement("canvas");
+        canvas.width = 128;
+        canvas.height = 128;
+        var texUrl = fnTex(d);
+        gl.atmosphere = fnAtmosphere(d);
+        gl.textures.base = THREE.ImageUtils.loadTexture(texUrl, null, function(){
+
+            // Once textures are loaded, initialize WebGL for this globe and start rendering loop
+            d3gl.init(
+              gl, // The 3js state for this globe
+              function(gl, evt) { // callback function for mouse events
+                  evt.latlon = intersect(gl, evt);
+            });
+
+            // Add globe-specific WebGL elements to scene
+            initGlobeGL(gl);
+
+            // Add canvas to DOM
+            gl.element.appendChild(gl.renderer.domElement);
+
+            // Start rendering loop
+            globeRender(gl);
+        });
+    }
+    // called 60 times per second
+    function globeRender(gl) {
+        // update
+        d3gl.fireEvent("update", null);
+        updateAnimations();
+        if(fnTransparency) gl.uniforms.transparency.value = fnTransparency(gl.datum);
+        // now update/create the 3D overlays
+        for(var i = 0; i < overlay3D.length; i++) {
+            overlay3D[i](gl, gl.datum);
+        }
+    
+        // draw the 2D (texture) overlays
+        var context = gl.overlayCanvas.getContext("2d");
+        context.setTransform(1,0,0,1,0,0); // identity
+        context.width = gl.overlayCanvas.width;
+        context.height = gl.overlayCanvas.height;
+        context.clearRect(0,0,context.width,context.height);
+        for(var i = 0; i < overlayTex.length; i++){
+            overlayTex[i](gl, context, gl.datum);
+        }
+        gl.textures.overlay.needsUpdate = true; // tell 3js to update
+        
+        // draw the objects in scene
+        Object.keys(gl.meshes).forEach(function(key) {
+            var meshes = gl.meshes[key];
+            meshes.forEach(function(m) {
+                m.matrixAutoUpdate = false;
+                m.rotation.x = d3gl.rotation.lat*Math.PI/180 + m.orientation.x; 
+                m.rotation.y = -d3gl.rotation.lon*Math.PI/180 + m.orientation.y;
+                m.updateMatrix();
+            });
+        });
+        gl.camera.position.z = 1+d3gl.zoom();
+        //gl.scene.overrideMaterial = true;
+        gl.renderer.sortObjects = false;
+        gl.renderer.sortElements = false;
+        gl.renderer.render(gl.scene, gl.camera);
+
+        requestAnimationFrame(function() { globeRender(gl);});
+    }
+
+    // sets up a ThreeJS globe
+    function initGlobeGL(gl){
+        // globe model. rendering steps:
+        // 1. render the base texture
+        // 2. add any shape overlays using the shaders
+        // 3. add additional overlays from an offscreen canvas (arbitrary d3)
+
+        // create hidden canvas element for texture manipulation
+        var canvas = document.createElement("canvas");
+        canvas.width = 4000;
+        canvas.height = 2000;
+        gl.textures.overlay = new THREE.Texture(canvas);
+        var sphereMaterial = initMaterial(gl.shaders, gl.textures);
+        var sphereMaterialBack = initMaterial(gl.shaders, gl.textures);
+        //sphereMaterialBack.depthTest = false;
+        //sphereMaterialBack.depthWrite = false;
+        sphereMaterialBack.side = THREE.BackSide;
+
+        // create the actual globe
+        var radius = 1.0, segments = 80, rings = 40;
+        var geom = new THREE.SphereGeometry(radius, segments, rings);
+        var sphere = new THREE.Mesh(geom, sphereMaterial);
+        var sphereBack = new THREE.Mesh(geom, sphereMaterialBack);
+        sphere.orientation = new THREE.Vector3(0, 0, 0);
+        sphereBack.orientation = new THREE.Vector3(0, 0, 0);
+        gl.scene.add(sphereBack);
+        gl.scene.add(sphere);
+
+        // atmospheric effects
+        var atmosphereMaterial = initAtmosphereMaterial(gl);
+        var atmosphere = new THREE.Mesh(geom, atmosphereMaterial);
+        atmosphere.scale.x = 1.1;
+        atmosphere.scale.y = 1.1;
+        atmosphere.scale.z = 1.1;
+        gl.scene.add(atmosphere);
+
+        // add a point light
+        var pointLight = new THREE.PointLight( 0xFFFFFF );
+        pointLight.position.x = 1;
+        pointLight.position.y = 5;
+        pointLight.position.z = 13;
+        gl.scene.add(pointLight);
+
+        if(!sphere || !canvas || !sphereMaterial.uniforms || !gl.renderer || !gl.scene || !gl.camera){
+            throw "Initialization failed.";
+        }
+        gl.meshes = {
+            globe: [sphere,sphereBack],
+            bars: [],
+            arcs: []
+        };
+        gl.overlayCanvas = canvas;
+        gl.material = sphereMaterial;
+        gl.uniforms = sphereMaterial.uniforms;
+        gl.projector = new THREE.Projector();
+        window.gl = gl;
+    }
+
 
     // *** HELPER FUNCTIONS
     function initMaterial(shaders, textures){
@@ -120,139 +379,6 @@ d3.gl.globe = function(){
         return atmosphereMaterial;
     }
 
-    // sets up a ThreeJS globe
-    function initGL(gl){
-        var scene = new THREE.Scene();
-
-        // camera
-        var camera = new THREE.PerspectiveCamera(
-            VIEW_ANGLE, width/height,
-            NEAR, FAR);
-        camera.position.z = 2;
-        scene.add(camera);
-
-        // globe model. rendering steps:
-        // 1. render the base texture
-        // 2. add any shape overlays using the shaders
-        // 3. add additional overlays from an offscreen canvas (arbitrary d3)
-
-        // create hidden canvas element for texture manipulation
-        var canvas = document.createElement("canvas");
-        canvas.width = 4000;
-        canvas.height = 2000;
-        gl.textures.overlay = new THREE.Texture(canvas);
-        var sphereMaterial = initMaterial(gl.shaders, gl.textures);
-        var sphereMaterialBack = initMaterial(gl.shaders, gl.textures);
-        //sphereMaterialBack.depthTest = false;
-        //sphereMaterialBack.depthWrite = false;
-        sphereMaterialBack.side = THREE.BackSide;
-
-        // create the actual globe
-        var radius = 1.0, segments = 80, rings = 40;
-        var geom = new THREE.SphereGeometry(radius, segments, rings);
-        var sphere = new THREE.Mesh(geom, sphereMaterial);
-        var sphereBack = new THREE.Mesh(geom, sphereMaterialBack);
-        sphere.orientation = new THREE.Vector3(0, 0, 0);
-        sphereBack.orientation = new THREE.Vector3(0, 0, 0);
-        scene.add(sphereBack);
-        scene.add(sphere);
-
-        // atmospheric effects
-        var atmosphereMaterial = initAtmosphereMaterial(gl);
-        var atmosphere = new THREE.Mesh(geom, atmosphereMaterial);
-        atmosphere.scale.x = 1.1;
-        atmosphere.scale.y = 1.1;
-        atmosphere.scale.z = 1.1;
-        scene.add(atmosphere);
-
-        // add a point light
-        var pointLight = new THREE.PointLight( 0xFFFFFF );
-        pointLight.position.x = 1;
-        pointLight.position.y = 5;
-        pointLight.position.z = 13;
-        scene.add(pointLight);
-
-        // start the renderer
-        var renderer = new THREE.WebGLRenderer({
-            antialias: true
-        });
-        renderer.setSize(width, height);
-
-        if(!sphere || !canvas || !sphereMaterial.uniforms || !renderer || !scene || !camera){
-            throw "Initialization failed.";
-        }
-        gl.meshes = {
-            globe: [sphere,sphereBack],
-            bars: [],
-            arcs: []
-        };
-        gl.overlayCanvas = canvas;
-        gl.material = sphereMaterial;
-        gl.uniforms = sphereMaterial.uniforms;
-        gl.renderer = renderer;
-        gl.scene = scene;
-        gl.camera = camera;
-        gl.projector = new THREE.Projector();
-        window.gl = gl;
-    }
-
-    function initControls(gl, elem){
-        var dragStart;
-        var latlon = null;
-        $(elem).mousedown(function(evt){
-            fireMouseEvent("mousedown", gl, evt);
-            evt.preventDefault();
-            dragStart = [evt.pageX, evt.pageY];
-        }).mousemove(function(evt){
-            fireMouseEvent("mousemove", gl, evt);
-            if(!dragStart) return;
-            dragUpdate(evt);
-            dragStart = [evt.pageX, evt.pageY]; 
-        }).mouseup(function(evt){
-            fireMouseEvent("mouseup", gl, evt);
-            if(!dragStart) return;
-            dragUpdate(evt);
-            dragStart = null;
-        }).mouseleave(function(evt){
-            if(!dragStart) return;
-            dragUpdate(evt);
-            dragStart = null;
-        }).click(function(evt){
-            fireMouseEvent("click", gl, evt);
-        }).dblclick(function(evt){
-            fireMouseEvent("dblclick", gl, evt);
-        }).mousewheel(function(evt, delta, dx, dy){
-            zoomUpdate(Math.pow(1-ZOOM_SENSITIVITY, dy));
-            evt.preventDefault();
-        });
-
-        $(document).keydown(function(evt){
-            var key = String.fromCharCode(evt.which).toLowerCase();
-            if(key=="w") zoomUpdate(1/1.2); // zoom in
-            else if(key=="s") zoomUpdate(1.2); // zoom out
-            else if(key=="a") rotation.lon -= 10;
-            else if(key=="d") rotation.lon += 10;
-            else return;
-            evt.preventDefault();
-        });
-
-        function zoomUpdate(z){
-            zoom *= z;
-            zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
-        }
-        function dragUpdate(evt){
-            rotation.lon -= (evt.pageX - dragStart[0])*MOUSE_SENSITIVITY*zoom;
-            rotation.lat += (evt.pageY - dragStart[1])*MOUSE_SENSITIVITY*zoom;
-        }
-    }
-
-    // This is not quite as clean as
-    // an external stylesheet, but simpler for
-    // the end user.
-    function initStyle(elem){
-        elem.style.cursor = "pointer";
-    }
-
     /**
      * Turns a mouse event into a [lat, lon] pair,
      * or returns null if the mouse isn't over the globe.
@@ -260,8 +386,8 @@ d3.gl.globe = function(){
     function intersect(gl, evt) {
         // cast a ray through the mouse
         var vector = new THREE.Vector3(
-            (evt.offsetX / width)*2 - 1,
-            -(evt.offsetY / height)*2 + 1,
+            (evt.offsetX / d3gl.width)*2 - 1,
+            -(evt.offsetY / d3gl.height)*2 + 1,
             1.0
         );
         gl.projector.unprojectVector(vector, gl.camera);
@@ -278,8 +404,8 @@ d3.gl.globe = function(){
         phi = Math.acos(point.y); // 0 <= phi <= pi
         theta = Math.atan(point.x / point.z); // -pi <= theta <= pi 
 
-        lat = 90 - phi*180/Math.PI + rotation.lat;
-        lon = -90 + theta*180/Math.PI + rotation.lon;
+        lat = 90 - phi*180/Math.PI + d3gl.rotation.lat;
+        lon = -90 + theta*180/Math.PI + d3gl.rotation.lon;
 
         while(lon < -180) lon += 360;
         while(lon > 180) lon -= 360;
@@ -291,21 +417,8 @@ d3.gl.globe = function(){
         return [lat, lon];
     }
 
-    function fireMouseEvent(name, gl, evt){
-        var handlers = eventHandlers[name];
-        if (handlers.length == 0) return;
+    function mouseEventCallback(gl, evt) {
         evt.latlon = intersect(gl, evt);
-        evt.datum = gl.datum;
-        for(var i = 0; i < handlers.length; i++){
-            handlers[i](evt);
-        }
-    }
-    function fireEvent(name, evt) {
-        var handlers = eventHandlers[name];
-        if (handlers.length == 0) return;
-        for(var i = 0; i < handlers.length; i++){
-            handlers[i](evt);
-        }
     }
 
     function updateAnimations(){
@@ -335,91 +448,6 @@ d3.gl.globe = function(){
         }
     }
 
-
-    // *** RENDER FUNCTION
-    // see http://bost.ocks.org/mike/chart/
-    function globe(g){
-        g.each(globeRender);
-    }
-    function globeRender(d,i){
-        // validate 
-        if(this.tagName == "canvas") throw "D3GL creates its own canvas elements. "+
-            "Render into a <div>, not directly into a <canvas>."
-
-        // gl stores all the rendering state for each individual globe.
-        // remember that a call to d3.gl.globe() may result in multiple globes (one per datum)
-        var gl = {};
-        gl.element = this; // the D3 primitive: one dom element, one datum
-        gl.datum = d;
-        gl.index = i;
-        gl.shaders = shaders.globe;
-        gl.textures = {};
-
-        // load textures
-        var canvas = document.createElement("canvas");
-        canvas.width = 128;
-        canvas.height = 128;
-        var texUrl = fnTex(d);
-        gl.textures.base = THREE.ImageUtils.loadTexture(texUrl, null, function(){
-            start();
-        });
-        gl.atmosphere = fnAtmosphere(d);
-
-        function start() {
-            // 3js state
-            initGL(gl); // set up scene, transform, etc
-            initControls(gl, gl.renderer.domElement); // mouse zoom+rotate
-            initStyle(gl.renderer.domElement); // <canvas> style
-            gl.element.appendChild(gl.renderer.domElement);
-            
-            // called 60 times per second
-            function render() {
-                // update
-                fireEvent("update", null);
-                updateAnimations();
-                if(fnTransparency) gl.uniforms.transparency.value = fnTransparency(d);
-                // now update/create the 3D overlays
-                for(var i = 0; i < overlay3D.length; i++) {
-                    overlay3D[i](gl, d);
-                }
-            
-                // draw the 2D (texture) overlays
-                var context = gl.overlayCanvas.getContext("2d");
-                context.setTransform(1,0,0,1,0,0); // identity
-                context.width = gl.overlayCanvas.width;
-                context.height = gl.overlayCanvas.height;
-                context.clearRect(0,0,context.width,context.height);
-                for(var i = 0; i < overlayTex.length; i++){
-                    overlayTex[i](gl, context, d);
-                }
-                gl.textures.overlay.needsUpdate = true; // tell 3js to update
-                
-                // draw the objects in scene
-                Object.keys(gl.meshes).forEach(function(key) {
-                    var meshes = gl.meshes[key];
-                    meshes.forEach(function(m) {
-                        m.matrixAutoUpdate = false;
-                        m.rotation.x = rotation.lat*Math.PI/180 + m.orientation.x; 
-                        m.rotation.y = -rotation.lon*Math.PI/180 + m.orientation.y;
-                        m.updateMatrix();
-                    });
-                });
-                /*
-                for(var i = 0; i < gl.meshes.length; i++) {
-                    var m = gl.meshes[i];
-                }
-                */
-                gl.camera.position.z = 1+zoom;
-                //gl.scene.overrideMaterial = true;
-                gl.renderer.sortObjects = false;
-                gl.renderer.sortElements = false;
-                gl.renderer.render(gl.scene, gl.camera);
-
-                requestAnimationFrame(render);
-            }
-            render();
-        }
-    }
 
     // *** PROPERTIES
     globe.width = function(val){
@@ -463,10 +491,10 @@ d3.gl.globe = function(){
         return globe;
     }
     globe.on = function(eventName, callback){
-        if(typeof(eventHandlers[eventName])==="undefined"){
+        if(typeof(d3gl.eventHandlers[eventName])==="undefined"){
             throw "unsupported event "+eventName;
         }
-        eventHandlers[eventName].push(callback);
+        d3gl.eventHandlers[eventName].push(callback);
         return globe;
     }
     globe.rotation = function(latlon){
@@ -476,9 +504,9 @@ d3.gl.globe = function(){
         return globe;
     }
     globe.zoom = function(z){
-        if(!arguments.length) return zoom;
+        if(!arguments.length) return d3gl.zoom();
         if(!z || z<0) throw "Invalid zoom()";
-        zoom = z;
+        d3gl.zoom(z);
         return globe;
     }
 
@@ -490,7 +518,7 @@ d3.gl.globe = function(){
         else if(ms=="slow") ms = 600;
 
         anim.rotation = {
-            start:rotation,
+            start:d3gl.rotation,
             end:{"lat":latlon[0],"lon":latlon[1] + 90},
             startTime:new Date().getTime(),
             duration:ms
