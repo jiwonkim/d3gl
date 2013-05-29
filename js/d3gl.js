@@ -265,37 +265,29 @@ d3.gl.globe = function(){
             1.0
         );
         gl.projector.unprojectVector(vector, gl.camera);
-        var ray = new THREE.Ray(
+        var raycaster = new THREE.Raycaster(
             gl.camera.position,
             vector.sub(gl.camera.position).normalize()
         );
+        
+        var intersected = raycaster.intersectObjects(gl.meshes.globe);
+        if (intersected.length === 0) return null;
+        var point = intersected[0].point;
 
-        // ray-sphere intersection for unit sphere centered at (0, 0, 0)
-        var a = ray.direction.dot(ray.direction);
-        var b = 2 * ray.origin.dot(ray.direction)
-        var c = ray.origin.dot(ray.origin) - 1;
-        var det = b*b - 4*a*c;
-        if(det < 0) return null; // no intersection
-        var t = (-b - Math.sqrt(det))/(2*a);
-        var point = ray.direction.clone().multiplyScalar(t).add(ray.origin);
+        var theta, phi, lat, lon;
+        phi = Math.acos(point.y); // 0 <= phi <= pi
+        theta = Math.atan(point.x / point.z); // -pi <= theta <= pi 
 
-        // convert to lat/lon
-        var rlat = rotation.lat*Math.PI/180;
-        var rlon = rotation.lon*Math.PI/180;
-        var rot = new THREE.Matrix4();
-        rot.rotateY(rlon);
-        rot.rotateX(-rlat);
-        point = rot.multiplyVector3(point);
-        var lat = Math.asin(point.y);
-        var lon = Math.atan2(point.x, point.z);
-        lat = 180/Math.PI*lat;
-        lon = 180/Math.PI*lon - 90;
+        lat = 90 - phi*180/Math.PI + rotation.lat;
+        lon = -90 + theta*180/Math.PI + rotation.lon;
+
         while(lon < -180) lon += 360;
         while(lon > 180) lon -= 360;
         while(lat < -90) lat += 360;
         while(lat > 270) lat -= 360;
         if(lat > 90) lat = 180 - lat;
         if(lat < -90 || lat > 90 || lon < -180 || lon > 180) throw "lat/lon error "+lat+"/"+lon;
+
         return [lat, lon];
     }
 
@@ -406,12 +398,17 @@ d3.gl.globe = function(){
                 Object.keys(gl.meshes).forEach(function(key) {
                     var meshes = gl.meshes[key];
                     meshes.forEach(function(m) {
+                      /*
                         m.matrixAutoUpdate = false;
                         m.matrixWorld = new THREE.Matrix4();
-                        m.matrixWorld.rotateX(rotation.lat*Math.PI/180);
-                        m.matrixWorld.rotateY(-rotation.lon*Math.PI/180);
-                        m.matrixWorld.rotateY(m.orientation.y);
-                        m.matrixWorld.rotateX(m.orientation.x);
+                        m.matrixWorld.makeRotationX(rotation.lat*Math.PI/180);
+                        m.matrixWorld.makeRotationY(-rotation.lon*Math.PI/180);
+                        m.matrixWorld.makeRotationY(m.orientation.y);
+                        m.matrixWorld.makeRotationX(m.orientation.x);
+                        */
+                        m.rotation.x = rotation.lat*Math.PI/180 + m.orientation.x; 
+                        m.rotation.y = -rotation.lon*Math.PI/180 + m.orientation.y;
+                        m.updateMatrix();
                     });
                 });
                 /*
@@ -1746,8 +1743,8 @@ d3.gl.model = function() {
             zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
         }
         function dragUpdate(evt){
-            rotation.lon -= (evt.pageX - dragStart[0])*MOUSE_SENSITIVITY*zoom;
             rotation.lat += (evt.pageY - dragStart[1])*MOUSE_SENSITIVITY*zoom;
+            rotation.lon -= (evt.pageX - dragStart[0])*MOUSE_SENSITIVITY*zoom;
         }
     }
 
