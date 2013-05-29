@@ -10,6 +10,9 @@ if(!d3 || !jQuery || !THREE || !requestAnimationFrame){
 }
 
 d3.gl = {};
+d3.gl.base = {
+
+};
 d3.gl.globe = function(){
     // *** see PROPERTIES
     // viewport dimensions, in pixels
@@ -264,7 +267,7 @@ d3.gl.globe = function(){
         gl.projector.unprojectVector(vector, gl.camera);
         var ray = new THREE.Ray(
             gl.camera.position,
-            vector.subSelf(gl.camera.position).normalize()
+            vector.sub(gl.camera.position).normalize()
         );
 
         // ray-sphere intersection for unit sphere centered at (0, 0, 0)
@@ -274,7 +277,7 @@ d3.gl.globe = function(){
         var det = b*b - 4*a*c;
         if(det < 0) return null; // no intersection
         var t = (-b - Math.sqrt(det))/(2*a);
-        var point = ray.direction.clone().multiplyScalar(t).addSelf(ray.origin);
+        var point = ray.direction.clone().multiplyScalar(t).add(ray.origin);
 
         // convert to lat/lon
         var rlat = rotation.lat*Math.PI/180;
@@ -1098,7 +1101,6 @@ d3.gl.globe = function(){
                     Math.cos(latE)*Math.cos(lonE),
                     Math.sin(latE),
                     -Math.cos(latE)*Math.sin(lonE));
-                //console.log("WAT? "+vS.x+","+vS.y+","+vS.z+","+vE.x+","+vE.y+","+vE.z);
                 var vAxis = new THREE.Vector3().cross(vS, vE);
                 var theta = vS.angleTo(vE);
                 var npoints = 100;
@@ -1670,6 +1672,7 @@ d3.gl.model = function() {
         gl.camera = camera;
         gl.scene = scene;
         gl.renderer = renderer;
+        gl.projector = new THREE.Projector();
         window.gl = gl;
     }
 
@@ -1687,9 +1690,9 @@ d3.gl.model = function() {
         gl.model.scale.x = gl.model.scale.y = gl.model.scale.z = scale;
 
         if (adjustCenter) {
-            var centerPoint = new THREE.Vector3().add(gl.obj.bbox.min, gl.obj.bbox.max)
+            var centerPoint = new THREE.Vector3().addVectors(gl.obj.bbox.min, gl.obj.bbox.max)
                 .multiplyScalar(0.5);
-            var centerTranslation = new THREE.Vector3().sub(
+            var centerTranslation = new THREE.Vector3().subVectors(
                 gl.model.position, centerPoint);
             centerModel(gl.model, centerTranslation);
             gl.model.updateMatrix();
@@ -1752,11 +1755,33 @@ d3.gl.model = function() {
         elem.style.cursor = "pointer";
     }
 
+    function intersect(gl, evt) {
+        // cast a ray through the mouse
+        var vector = new THREE.Vector3(
+            (evt.offsetX / width)*2 - 1,
+            -(evt.offsetY / height)*2 + 1,
+            1.0
+        );
+        gl.projector.unprojectVector(vector, gl.camera);
+        var raycaster = new THREE.Raycaster(
+            gl.camera.position,
+            vector.sub(gl.camera.position).normalize()
+        );
+        
+        /*
+        var intersected = raycaster.intersectObject(gl.model);
+        if(intersected) {
+            //intersected[0].object.material.materials[0].emissive.setHex( 0xff0000 )
+        }
+        */
+    }
+
     // *** MOUSE EVENT FUNCTIONS
     function fireMouseEvent(name, gl, evt){
         var handlers = eventHandlers[name];
         if (handlers.length == 0) return;
-        evt.latlon = intersect(gl, evt);
+        intersect(gl, evt);
+        //evt.latlon = intersect(gl, evt);
         evt.datum = gl.datum;
         for(var i = 0; i < handlers.length; i++){
             handlers[i](evt);
@@ -1774,7 +1799,7 @@ d3.gl.model = function() {
     function centerModel(object, centerTranslation) {
         if(object.geometry){
             object.geometry.vertices.forEach(function(vertex) {
-                vertex.addSelf(centerTranslation);
+                vertex.add(centerTranslation);
             });
         }else{
             for(var i in object.children){
@@ -1889,6 +1914,14 @@ d3.gl.model = function() {
         }
         return model;
     };
+    /** **/
+    model.on = function(eventName, callback){
+        if(typeof(eventHandlers[eventName])==="undefined"){
+            throw "unsupported event "+eventName;
+        }
+        eventHandlers[eventName].push(callback);
+        return model;
+    }
 
     // *** PRIMITIVES
 
