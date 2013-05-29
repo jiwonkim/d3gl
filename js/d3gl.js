@@ -15,8 +15,16 @@ d3.gl = function() {
 
     /** PUBLIC **/
     // viewport dimensions, in pixels
-    d3gl.width = 400;
-    d3gl.height = 400;
+    var width = 400;
+    var height = 400;
+    d3gl.width = function(val){
+        if(!arguments.length) return width;
+        width = val;
+    }
+    d3gl.height = function(val){
+        if(!arguments.length) return height;
+        height = val;
+    }
 
     d3gl.zoom = function(val) {
         if (arguments.length === 0) return zoom; 
@@ -25,11 +33,29 @@ d3.gl = function() {
     d3gl.rotation = {"lat":0,"lon":0};
 
     d3gl.init = function(gl, mouseEventCallback) {
-        d3gl.initGL(gl);
-        d3gl.initControls(gl, gl.renderer.domElement, mouseEventCallback);
-        d3gl.initStyle(gl.renderer.domElement); // <canvas> style
+        initGL(gl);
+        initControls(gl, gl.renderer.domElement, mouseEventCallback);
+        initStyle(gl.renderer.domElement); // <canvas> style
     };
-    d3gl.eventHandlers = {
+    d3gl.fireEvent = function(name, evt) {
+        var handlers = eventHandlers[name];
+        if (handlers.length == 0) return;
+        for(var i = 0; i < handlers.length; i++){
+            handlers[i](evt);
+        }
+    };
+    d3gl.addEventHandler = function(eventName, callback) {
+        if(typeof(eventHandlers[eventName])==="undefined"){
+            throw "unsupported event "+eventName;
+        }
+        eventHandlers[eventName].push(callback);
+    };
+
+    /** PRIVATE **/
+    // variables
+    var zoom = 2.0;
+    var dragStart = null;
+    var eventHandlers = {
         // mouse handlers
         'mousedown':[],
         'mousemove':[],
@@ -39,21 +65,23 @@ d3.gl = function() {
         // fired before each render
         'update':[]
     };
-    d3gl.fireEvent = function(name, evt) {
-        var handlers = d3gl.eventHandlers[name];
-        if (handlers.length == 0) return;
-        for(var i = 0; i < handlers.length; i++){
-            handlers[i](evt);
-        }
-    }
+    // constants
+    var MIN_ZOOM = 0.5;
+    var MAX_ZOOM = 4;
+    var MOUSE_SENSITIVITY = 0.15; // degrees rotated per pixel
+    var ZOOM_SENSITIVITY = 0.1; // (0 = no effect, 1 = infinite)
+    var VIEW_ANGLE = 45,
+        NEAR = 0.01,
+        FAR = 100;
+
     // This is not quite as clean as
     // an external stylesheet, but simpler for
     // the end user.
-    d3gl.initStyle = function(elem) {
+    function initStyle(elem) {
         elem.style.cursor = "pointer";
     }
 
-    d3gl.initControls = function(gl, elem, mouseEventCallback){
+    function initControls(gl, elem, mouseEventCallback){
         var latlon = null;
         $(elem).mousedown(function(evt){
             fireMouseEvent("mousedown", gl, evt, mouseEventCallback);
@@ -92,7 +120,7 @@ d3.gl = function() {
             evt.preventDefault();
         });
     }
-    d3gl.initGL = function(gl) {
+    function initGL(gl) {
         var scene, camera, renderer;
 
         // scene
@@ -100,7 +128,7 @@ d3.gl = function() {
 
         // camera
         camera = new THREE.PerspectiveCamera(
-            VIEW_ANGLE, d3gl.width/d3gl.height,
+            VIEW_ANGLE, width/height,
             NEAR, FAR);
         camera.position.z = 2;
         scene.add(camera);
@@ -109,26 +137,12 @@ d3.gl = function() {
         renderer = new THREE.WebGLRenderer({
             antialias: true
         });
-        renderer.setSize(d3gl.width, d3gl.height);
+        renderer.setSize(width, height);
 
         gl.scene = scene;
         gl.camera = camera;
         gl.renderer = renderer;
     }
-
-    /** PRIVATE **/
-    // variables
-    var zoom = 2.0;
-    var dragStart = null;
-
-    // constants
-    var MIN_ZOOM = 0.5;
-    var MAX_ZOOM = 4;
-    var MOUSE_SENSITIVITY = 0.15; // degrees rotated per pixel
-    var ZOOM_SENSITIVITY = 0.1; // (0 = no effect, 1 = infinite)
-    var VIEW_ANGLE = 45,
-        NEAR = 0.01,
-        FAR = 100;
 
     function zoomUpdate(val) {
         zoom *= val;
@@ -139,7 +153,7 @@ d3.gl = function() {
         d3gl.rotation.lat += (evt.pageY - dragStart[1])*MOUSE_SENSITIVITY*zoom;
     };
     function fireMouseEvent (name, gl, evt, callback) {
-        var handlers = d3gl.eventHandlers[name];
+        var handlers = eventHandlers[name];
         if (handlers.length == 0) return;
         evt.datum = gl.datum;
         callback(gl, evt);
@@ -219,7 +233,7 @@ d3.gl.globe = function(){
         if(fnTransparency) gl.uniforms.transparency.value = fnTransparency(gl.datum);
         // now update/create the 3D overlays
         for(var i = 0; i < overlay3D.length; i++) {
-            overlay3D[i](gl, gl.datum);
+            overlay3D[i](gl);
         }
     
         // draw the 2D (texture) overlays
@@ -229,7 +243,7 @@ d3.gl.globe = function(){
         context.height = gl.overlayCanvas.height;
         context.clearRect(0,0,context.width,context.height);
         for(var i = 0; i < overlayTex.length; i++){
-            overlayTex[i](gl, context, gl.datum);
+            overlayTex[i](gl, context);
         }
         gl.textures.overlay.needsUpdate = true; // tell 3js to update
         
@@ -386,8 +400,8 @@ d3.gl.globe = function(){
     function intersect(gl, evt) {
         // cast a ray through the mouse
         var vector = new THREE.Vector3(
-            (evt.offsetX / d3gl.width)*2 - 1,
-            -(evt.offsetY / d3gl.height)*2 + 1,
+            (evt.offsetX / d3gl.width())*2 - 1,
+            -(evt.offsetY / d3gl.height())*2 + 1,
             1.0
         );
         gl.projector.unprojectVector(vector, gl.camera);
@@ -451,14 +465,12 @@ d3.gl.globe = function(){
 
     // *** PROPERTIES
     globe.width = function(val){
-        if(!arguments.length) return width;
-        width = val;
-        return globe;
+        var ret = d3gl.width(val);
+        return ret ? ret : globe;
     }
     globe.height = function(val){
-        if(!arguments.length) return height;
-        height = val;
-        return globe;
+        var ret = d3gl.height(val);
+        return ret ? ret : globe;
     }
     globe.latitude= function(val){
         if(!arguments.length) return fnLat;  
@@ -491,10 +503,7 @@ d3.gl.globe = function(){
         return globe;
     }
     globe.on = function(eventName, callback){
-        if(typeof(d3gl.eventHandlers[eventName])==="undefined"){
-            throw "unsupported event "+eventName;
-        }
-        d3gl.eventHandlers[eventName].push(callback);
+        d3gl.addEventHandler(eventName, callback);
         return globe;
     }
     globe.rotation = function(latlon){
@@ -548,7 +557,7 @@ d3.gl.globe = function(){
 
         // ImageData object for idMapUrl
         var idMapImageData = null;
-        function shapes(gl, context, datum){
+        function shapes(gl, context){
             gl.uniforms.lookupShapes.value = 1;
 
             // load id map texture
@@ -560,7 +569,7 @@ d3.gl.globe = function(){
             }
 
             // iterate over data elements and create data texture
-            var array = fnData(datum);
+            var array = fnData(gl.datum);
             var textureHeight = 1;
             var textureWidth = 1024*3;
             var colorLookup = new Uint8Array(textureWidth*4);
@@ -695,9 +704,9 @@ d3.gl.globe = function(){
             context.lineWidth = lineWidth;
             context.stroke();
         }
-        function points(gl, context, datum){
+        function points(gl, context){
             // render the points into a texture that goes on the globe
-            var array = fnData(datum);
+            var array = fnData(gl.datum);
             for(var i=0; i<array.length; i++) {
                 var elem = array[i];
                 var lat = parseFloat(fnLat(elem, i));
@@ -816,15 +825,15 @@ d3.gl.globe = function(){
         var transitions = [];
         var barsFs, barsVs;
         var barObjs = {};
-        function bars(gl, datum){
+        function bars(gl){
             // If user has changed data element, remove previous bars
-            removePreviousBars(gl, datum);
+            removePreviousBars(gl, gl.datum);
 
             // Update transition state
             bars.transition.update();
 
             // reeval every bar, at 60fps
-            var array = fns.fnData(datum);
+            var array = fns.fnData(gl.datum);
             array.forEach(function(elem){
                 // compute properties
                 var state =  {
@@ -1080,9 +1089,9 @@ d3.gl.globe = function(){
         var fnColor = function(){return 0x000000};
 
         var arcObjs = {};
-        function arcs(gl, datum){
+        function arcs(gl){
             // reeval every arc, at 60fps
-            var array = fnData(datum);
+            var array = fnData(gl.datum);
             var elemIds = []
             array.forEach(function(elem, ix){
                 var elemId = fnId(elem, ix);
@@ -1221,8 +1230,8 @@ d3.gl.globe = function(){
     globe.painter = function() {
         var fnData = function(d) { return d; };
         var fnPaint;
-        function painter(gl, context, datum) {
-            fnPaint(gl, context, fnData(datum));
+        function painter(gl, context) {
+            fnPaint(gl, context, fnData(gl.datum));
         }
         painter.paint = function(val) {
             if(arguments.length == 0) return fnPaint;
@@ -1254,9 +1263,9 @@ d3.gl.globe = function(){
         var heatmapImg;
 
         var update = true; // heatmap is manually updated
-        function heatmap(gl, context, datum) {
+        function heatmap(gl, context) {
             if(update) {
-                heatmapImg = renderHeatmap(gl, context, fnData(datum));
+                heatmapImg = renderHeatmap(gl, context, fnData(gl.datum));
                 update = false;
             }
             context.drawImage(heatmapImg, 0, 0, context.width, context.height);
