@@ -55,6 +55,55 @@ d3.gl = function() {
         gl.camera.position.z = 1 + zoom;
     }
 
+    /** THREE.js model scaling and centering related **/
+    d3gl.scaleModel = function(model, multiplier) {
+        var bbox = getBoundingBox(model);
+        var w = bbox.max.x - bbox.min.x;
+        var h = bbox.max.y - bbox.min.y;
+        var depth = bbox.max.z - bbox.min.z;
+        var scale = 1.5/Math.max(w, Math.max(h, depth));
+        scale *= multiplier;
+        model.scale.x = model.scale.y = model.scale.z = scale;
+    };
+    d3gl.centerModel = function(model) {
+        var bbox = getBoundingBox(model);
+        var centerPoint = new THREE.Vector3().addVectors(bbox.min, bbox.max)
+            .multiplyScalar(0.5);
+        var centerTranslation = new THREE.Vector3().subVectors(
+            model.position, centerPoint);
+        
+        translateModelVertices(model, centerTranslation);
+        model.updateMatrix();
+    };
+    function translateModelVertices(model, translation) {
+        if(model.geometry){
+            model.geometry.vertices.forEach(function(vertex) {
+                vertex.add(translation);
+            });
+        }else{
+            for(var i in model.children){
+                child = model.children[i];
+                transdlateModelVertices(child, translation);
+            }
+        } 
+    }
+
+    function getBoundingBox(model) {
+        if (!model || !model.geometry) return null;
+        model.geometry.computeBoundingBox();
+        var min = model.geometry.boundingBox.min;
+        var max = model.geometry.boundingBox.max;
+
+        min.x = parseFloat(min.x);
+        min.y = parseFloat(min.y);
+        min.z = parseFloat(min.z);
+        max.x = parseFloat(max.x);
+        max.y = parseFloat(max.y);
+        max.z = parseFloat(max.z);
+
+        return model.geometry.boundingBox;
+    }
+
     /** PRIVATE **/
     // variables
     var zoom = 2.0;
@@ -1571,7 +1620,7 @@ d3.gl.model = function() {
             gl.obj = {};
             gl.obj.geometry = g;
             gl.obj.materials = m;
-            gl.obj.bbox = getBoundingBox(gl.obj.geometry);
+            //gl.obj.bbox = d3gl.getBoundingBox(gl.obj.geometry);
             gl.obj.scale = fnScale ? fnScale(d) : 1.;
 
             // Init WebGL elements for this model
@@ -1679,21 +1728,10 @@ d3.gl.model = function() {
         gl.model.matrixAutoUpdate = false;
 
         // find appropriate scale for object
-        var w = gl.obj.bbox.max.x - gl.obj.bbox.min.x;
-        var h = gl.obj.bbox.max.y - gl.obj.bbox.min.y;
-        var depth = gl.obj.bbox.max.z - gl.obj.bbox.min.z;
-        var scale = 1.5/Math.max(w, Math.max(h, depth));
-        scale *= gl.obj.scale;
-        gl.model.scale.x = gl.model.scale.y = gl.model.scale.z = scale;
+        d3gl.scaleModel(gl.model, fnScale ? fnScale(d) : 1.);
 
-        if (adjustCenter) {
-            var centerPoint = new THREE.Vector3().addVectors(gl.obj.bbox.min, gl.obj.bbox.max)
-                .multiplyScalar(0.5);
-            var centerTranslation = new THREE.Vector3().subVectors(
-                gl.model.position, centerPoint);
-            centerModel(gl.model, centerTranslation);
-            gl.model.updateMatrix();
-        }
+        // Translate to center model in viewport
+        if (adjustCenter) d3gl.centerModel(gl.model);
         
         gl.scene.add(gl.model); 
     }
@@ -1721,25 +1759,6 @@ d3.gl.model = function() {
     }
 
     // *** HELPER FUNCTIONS 
-    function centerModel(object, centerTranslation) {
-        if(object.geometry){
-            object.geometry.vertices.forEach(function(vertex) {
-                vertex.add(centerTranslation);
-            });
-        }else{
-            for(var i in object.children){
-                child = object.children[i];
-                centerModel(child, centerTranslation);
-            }
-        } 
-    }
-
-    function getBoundingBox(geometry) {
-        if(!geometry) throw "D3GL Model only supports meshes with one geometry"
-        if(geometry.boundingBox) return geometry.boundingBox;
-        geometry.computeBoundingBox();
-        return geometry.boundingBox;
-    }
 
     /**
      * Given a texture path, returns the object with auto-filled params
@@ -1904,4 +1923,83 @@ d3.gl.model = function() {
 ].join("\n");
 
     return model;
+};
+
+d3.gl.pointcloud = function() {
+    var d3gl = d3.gl();
+    
+    var fnData, fnColor;
+
+    var pointcloud = function(g) {
+        g.each(pointcloudInit);
+    };
+
+    function pointcloudInit(d, i) {
+        // gl stores all the rendering state for each individual model.
+        // remember that a call to d3.gl.model() may result in multiple model (one per datum)
+        var gl = {};
+        gl.element = this; // the D3 primitive: one dom element, one datum
+        gl.datum = d;
+        gl.index = i;
+
+        d3gl.init(gl);
+        initPointcloud(gl);
+        // Add canvas to DOM
+        gl.element.appendChild(gl.renderer.domElement);
+        pointcloudRender(gl);
+    }
+
+    function pointcloudRender(gl) {
+        d3gl.update(gl);
+        d3gl.fireEvent("update", null);
+        
+        gl.pointcloud.rotation.x = d3gl.rotation.lat*Math.PI/180;
+        gl.pointcloud.rotation.y = -d3gl.rotation.lon*Math.PI/180;
+        gl.renderer.render(gl.scene, gl.camera);
+        requestAnimationFrame(function() { pointcloudRender(gl);});
+    }
+
+    function initPointcloud(gl) {
+        var vertices;
+        if (!fnData || !(vertices = fnData(gl.datum, gl.index))) {
+            throw "Please specify point cloud data using pointcloud.data";
+        }
+        
+        gl.points = new THREE.Geometry();
+        gl.material = new THREE.ParticleBasicMaterial({
+            color: 0x000000, size: 0.1 });
+
+        vertices.forEach(function(vertex) {
+            gl.points.vertices.push(
+                new THREE.Vector3(vertex.x, vertex.y, vertex.z));
+        });
+
+        gl.pointcloud = new THREE.ParticleSystem(gl.points, gl.material);
+        d3gl.scaleModel(gl.pointcloud, 1.);
+
+        // TODO: with center model, point cloud disappears :(
+        //d3gl.centerModel(gl.pointcloud);
+        gl.scene.add(gl.pointcloud);
+    }
+
+    pointcloud.width = function(val) {
+        var ret = d3gl.width(val);
+        return ret ? ret : pointcloud;
+    };
+    pointcloud.height = function(val) {
+        var ret = d3gl.height(val);
+        return ret ? ret : pointcloud;
+    };
+
+    pointcloud.data = function(val) {
+        if (arguments.length===0) return fnData;
+        if (typeof val === "function") fnData = val;
+        else fnData = function() { return val; };
+        return pointcloud;
+    };
+
+    pointcloud.color = function(val) {
+    };
+
+    return pointcloud;
 };
