@@ -112,7 +112,7 @@ function makeBars(data, colorScale, heightScale) {
         .texture("../img/oldmap.png")
         .zoom(3)
         .transparency(0.9)
-        .atmosphere("#ffffff");
+        //.atmosphere("#ffffff");
     
     var mouseoverBar = null;
     var month = 11;
@@ -140,7 +140,7 @@ function makeBars(data, colorScale, heightScale) {
         .height(function(d){ return 0; })
         .color(function(d){
             if(d==mouseoverBar) {
-                return "#111111";
+                return 0x000000;
             }
             return colorScale(d['magnitude']);
         })
@@ -239,12 +239,12 @@ $(function(){
     var colorScale = d3.scale.quantile()
         .domain([0, 3, 4, 5, 6, 7, 8, 10])
         .range([
-            "#ddff00", // minor
-            "#fff000", // light
-            "#ffcc00", // moderate
-            "#ff5500", // strong
-            "#ff2200", // major
-            "#ff0000", // great
+            0xddff00, // minor
+            0xfff000, // light
+            0xffcc00, // moderate
+            0xff5500, // strong
+            0xff2200, // major
+            0xff0000, // great
         ]);
 
     var heightScale = d3.scale.linear()
