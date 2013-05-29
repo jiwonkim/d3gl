@@ -44,8 +44,7 @@ var model = d3.gl.model()
         } else {
             return null;
         }
-    })
-    .on('click', function(evt) { });
+    });
 
 d3.select("body").selectAll("span")
     .data(meshes).enter().append("span")
