@@ -20,9 +20,15 @@
 <script type="text/javascript">
 $(function(){
     d3.csv("../models/pointcloud-house.csv", function(vertices) {
+        var scaleColor = d3.scale.linear()
+            .domain([0, 1237000]).range([0xff0000, 0x00ffff]);
+
         var pointcloud = d3.gl.pointcloud()
             .width(800).height(500)
-            .data(vertices);
+            .data(vertices)
+            .color(function(d, i, vIdx) {
+                return scaleColor(vIdx);
+            });
 
         d3.select("body").selectAll("span")
             .data(["pointcloud-house"]).enter().append("span")

@@ -1965,22 +1965,28 @@ d3.gl.pointcloud = function() {
     }
 
     function initPointcloud(gl) {
-        var vertices, scale;
+        var vertices, scale, geometry, material;
         if (!fnData || !(vertices = fnData(gl.datum, gl.index))) {
             throw "Please specify point cloud data using pointcloud.data";
         }
         scale = fnScale ? fnScale(gl.datum, gl.index) : 1;
-        
-        gl.points = new THREE.Geometry();
-        gl.material = new THREE.ParticleBasicMaterial({
-            color: 0x000000, size: 0.01 });
 
-        vertices.forEach(function(vertex) {
-            gl.points.vertices.push(new THREE.Vector3(
+        geometry = new THREE.Geometry();
+        geometry.colors = [];
+        vertices.forEach(function(vertex, vIdx) {
+            geometry.vertices.push(new THREE.Vector3(
                 parseFloat(vertex.x), parseFloat(vertex.y), parseFloat(vertex.z)));
+            geometry.colors.push(new THREE.Color(
+                fnColor ? fnColor(gl.datum, gl.index, vIdx) : 0x000000));
+        });
+        material = new THREE.ParticleBasicMaterial({
+            'vertexColors': true,
+            'size': 0.01,
+            'transparent': true
         });
 
-        gl.pointcloud = new THREE.ParticleSystem(gl.points, gl.material);
+        gl.pointcloud = new THREE.ParticleSystem(geometry, material);
+        //gl.pointcloud.sortParticles = true; // this is VERY slow for big pointclouds
         d3gl.scaleModel(gl.pointcloud, scale);
         d3gl.centerPointcloud(gl.pointcloud);
         gl.scene.add(gl.pointcloud);
@@ -2006,9 +2012,14 @@ d3.gl.pointcloud = function() {
         else fnData = function() { return val; };
         return pointcloud;
     };
-
     pointcloud.color = function(val) {
+        if (arguments.length===0) return fnColor;
+        if (typeof val === "function") fnColor = val;
+        else fnColor = function() { return val; };
+        return pointcloud;
     };
 
+    pointcloud.axis = function() {
+    };
     return pointcloud;
 };
