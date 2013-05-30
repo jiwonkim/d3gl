@@ -20,15 +20,27 @@
 <script type="text/javascript">
 $(function(){
     d3.csv("../models/pointcloud-house.csv", function(vertices) {
-        var scaleColor = d3.scale.linear()
-            .domain([0, 1237000]).range([0xff0000, 0x00ffff]);
+        //var scaleColor = d3.scale.linear()
+        //    .domain([0, 1237000]).range([0xff0000, 0xff0000]);
 
         var pointcloud = d3.gl.pointcloud()
             .width(800).height(500)
             .data(vertices)
             .color(function(d, i, vIdx) {
-                return scaleColor(vIdx);
+                if (vIdx > 50000) return 0xff0000;
+                else return 0x00ffff;
+                //return scaleColor(vIdx);
             });
+        
+        var scales = {
+            "x": d3.scale.linear().domain([-100, 100]),
+            "y": d3.scale.linear().domain([-100, 100]),
+            "z": d3.scale.linear().domain([-100, 100])
+        };
+        var axes = pointcloud.axis()
+            .data(["x", "y", "z"])
+            .scale(function(d) { return scales[d]; })
+            .orient(function(d) { return d; });
 
         d3.select("body").selectAll("span")
             .data(["pointcloud-house"]).enter().append("span")

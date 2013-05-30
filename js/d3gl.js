@@ -61,18 +61,18 @@ d3.gl = function() {
         var w = bbox.max.x - bbox.min.x;
         var h = bbox.max.y - bbox.min.y;
         var depth = bbox.max.z - bbox.min.z;
-        var scale = 1.5/Math.max(w, Math.max(h, depth));
-        scale *= multiplier;
-        model.scale.x = model.scale.y = model.scale.z = scale;
+        gl.scale = 1.5/Math.max(w, Math.max(h, depth));
+        gl.scale *= multiplier;
+        model.scale.x = model.scale.y = model.scale.z = gl.scale;
     };
     d3gl.centerModel = function(model) {
         var bbox = getBoundingBox(model);
         var centerPoint = new THREE.Vector3().addVectors(bbox.min, bbox.max)
             .multiplyScalar(0.5);
-        var centerTranslation = new THREE.Vector3().subVectors(
+        gl.centerTranslation = new THREE.Vector3().subVectors(
             model.position, centerPoint);
         
-        translateModelVertices(model, centerTranslation);
+        translateModelVertices(model, gl.centerTranslation);
         model.updateMatrix();
     };
     d3gl.centerPointcloud = function(pointcloud) {
@@ -82,10 +82,10 @@ d3.gl = function() {
             centerPoint.add(vertex);
         });
         centerPoint.multiplyScalar(1/count);
-        var centerTranslation = new THREE.Vector3().subVectors(
+        gl.centerTranslation = new THREE.Vector3().subVectors(
             pointcloud.position, centerPoint);
         
-        translateModelVertices(pointcloud, centerTranslation);
+        translateModelVertices(pointcloud, gl.centerTranslation);
         pointcloud.updateMatrix();
     };
     function translateModelVertices(model, translation) {
@@ -1934,6 +1934,8 @@ d3.gl.pointcloud = function() {
     /** User-defined callback functions **/
     var fnData, fnScale, fnColor;
 
+    var overlay3D = [];
+
     var pointcloud = function(g) {
         g.each(pointcloudInit);
     };
@@ -1945,6 +1947,7 @@ d3.gl.pointcloud = function() {
         gl.element = this; // the D3 primitive: one dom element, one datum
         gl.datum = d;
         gl.index = i;
+        gl.meshes = {'pointcloud': []};
 
         d3gl.init(gl);
         initPointcloud(gl);
@@ -1957,15 +1960,23 @@ d3.gl.pointcloud = function() {
     function pointcloudRender(gl) {
         d3gl.update(gl);
         d3gl.fireEvent("update", null);
+  
+        overlay3D.forEach(function(overlayFn) {
+            overlayFn(gl);
+        });
 
-        gl.pointcloud.rotation.x = d3gl.rotation.lat*Math.PI/180;
-        gl.pointcloud.rotation.y = -d3gl.rotation.lon*Math.PI/180;
+        Object.keys(gl.meshes).forEach(function(key) {
+            gl.meshes[key].forEach(function(m) {
+                m.rotation.x = d3gl.rotation.lat*Math.PI/180;
+                m.rotation.y = -d3gl.rotation.lon*Math.PI/180;
+            }); 
+        });
         gl.renderer.render(gl.scene, gl.camera);
         requestAnimationFrame(function() { pointcloudRender(gl);});
     }
 
     function initPointcloud(gl) {
-        var vertices, scale, geometry, material;
+        var vertices, scale, geometry, material, texture, pointcloud;
         if (!fnData || !(vertices = fnData(gl.datum, gl.index))) {
             throw "Please specify point cloud data using pointcloud.data";
         }
@@ -1979,17 +1990,42 @@ d3.gl.pointcloud = function() {
             geometry.colors.push(new THREE.Color(
                 fnColor ? fnColor(gl.datum, gl.index, vIdx) : 0x000000));
         });
+        texture = new THREE.Texture(generateTexture());
+        texture.needsUpdate = true;
         material = new THREE.ParticleBasicMaterial({
             'vertexColors': true,
             'size': 0.01,
-            'transparent': true
+            'map': texture,
+            'depthTest': false,
+            'transparent': true,
+            'opacity': 0.7
         });
 
-        gl.pointcloud = new THREE.ParticleSystem(geometry, material);
-        //gl.pointcloud.sortParticles = true; // this is VERY slow for big pointclouds
-        d3gl.scaleModel(gl.pointcloud, scale);
-        d3gl.centerPointcloud(gl.pointcloud);
-        gl.scene.add(gl.pointcloud);
+        pointcloud = new THREE.ParticleSystem(geometry, material);
+        gl.meshes['pointcloud'].push(pointcloud);
+
+        d3gl.scaleModel(pointcloud, scale);
+        d3gl.centerPointcloud(pointcloud);
+        gl.scene.add(pointcloud);
+    }
+    // draw a circle in the center of the canvas
+    function generateTexture() {
+        // create canvas
+        var size = 128;
+        var canvas = document.createElement( 'canvas' );
+        canvas.width = size;
+        canvas.height = size;
+        
+        // draw circle
+        var context = canvas.getContext( '2d' );
+        var radius = size / 2;
+
+        context.beginPath();
+        context.arc(radius, radius, radius, 0, 2*Math.PI, false);
+        context.fillStyle = "#fff";
+        context.fill();
+
+        return canvas;
     }
 
     pointcloud.width = function(val) {
@@ -2019,7 +2055,100 @@ d3.gl.pointcloud = function() {
         return pointcloud;
     };
 
+    /** AXIS **/
     pointcloud.axis = function() {
+        var update = true;
+        var fnData = function(d) { return d; };
+        var fnScale, fnOrient;
+
+        // Called once per frame
+        var axis = function(gl) {
+            if (!update) return;
+
+            // Newly updating. Remove previous.
+            if (gl.meshes.axis) {
+                gl.meshes.axis.forEach(function(m) {
+                    gl.scene.remove(m);
+                });
+            } else {
+                gl.meshes.axis = [];
+            }
+
+            // Num data elements = num axes for pointcloud
+            var data = fnData(gl.datum);
+
+            // For each axis, create and add meshes to scene
+            data.forEach(function(datum) {
+                var orient, scale, p0, p1;
+                var geometry, v0, v1, material, line;
+
+                orient = fnOrient(datum);
+                scale = fnScale(datum);
+                p0 = scale.domain()[0];
+                p1 = scale.domain()[1];
+                
+                // Line geometry
+                geometry = new THREE.Geometry();
+                geometry.vertices.push(getLineEndVertex(gl, orient, p0));
+                geometry.vertices.push(getLineEndVertex(gl, orient, p1));
+
+                // Line material
+                material = new THREE.LineBasicMaterial({
+                    'color': new THREE.Color(0x000000),
+                    'opacity': 1,
+                    'linewidth': 3}); 
+                
+                // Create and add line
+                line = new THREE.Line(geometry, material);
+                gl.scene.add(line);
+                gl.meshes.axis.push(line);
+            });
+/*
+(1) Get data array from fnData(gl.datum)
+... for each datum in the data array
+(2) create one line geometry going from domain.start to domain.end
+(3) create group of particles to render text
+(4) add them to gl.meshes.axis
+*/
+            update = false;
+        };
+        function getLineEndVertex(gl, orient, p) {
+            var v = new THREE.Vector3(
+                orient === "x" ? p : 0,
+                orient === "y" ? p : 0,
+                orient === "z" ? p : 0
+            );
+            v.add(gl.centerTranslation);
+            v.multiplyScalar(gl.scale);
+            return v;
+        }
+        axis.data = function(val) {
+            if (arguments.length===0) return fnData;
+            if (typeof val === "function") fnData = val;
+            else fnData = function() { return val;};
+            return axis;
+        };
+        // val = function(datum, index) {
+        //    return d3.scale
+        // }
+        axis.scale = function(val) {
+            if (arguments.length===0) return fnScale;
+            if (typeof val === "function") fnScale = val;
+            else fnScale = function() { return val;};
+            return axis;
+        };
+        // val = function(datum, index) {
+        //    return {"x"|"y"|"z"}
+        // }
+        axis.orient = function(val) {
+            if (arguments.length===0) return fnOrient;
+            if (typeof val === "function") fnOrient = val;
+            else fnOrient = function() { return val;};
+            return axis;
+        };
+
+        overlay3D.push(axis);
+        return axis;
     };
     return pointcloud;
 };
