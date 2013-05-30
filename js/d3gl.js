@@ -1935,6 +1935,7 @@ d3.gl.pointcloud = function() {
     var fnData, fnScale, fnColor;
 
     var overlay3D = [];
+    var shaders = {};
 
     var pointcloud = function(g) {
         g.each(pointcloudInit);
@@ -1990,7 +1991,7 @@ d3.gl.pointcloud = function() {
             geometry.colors.push(new THREE.Color(
                 fnColor ? fnColor(gl.datum, gl.index, vIdx) : 0x000000));
         });
-        texture = new THREE.Texture(generateTexture());
+        texture = new THREE.Texture(generatePointTexture());
         texture.needsUpdate = true;
         material = new THREE.ParticleBasicMaterial({
             'vertexColors': true,
@@ -2009,7 +2010,7 @@ d3.gl.pointcloud = function() {
         gl.scene.add(pointcloud);
     }
     // draw a circle in the center of the canvas
-    function generateTexture() {
+    function generatePointTexture() {
         // create canvas
         var size = 128;
         var canvas = document.createElement( 'canvas' );
@@ -2080,39 +2081,60 @@ d3.gl.pointcloud = function() {
             // For each axis, create and add meshes to scene
             data.forEach(function(datum) {
                 var orient, scale, p0, p1;
-                var geometry, v0, v1, material, line;
 
                 orient = fnOrient(datum);
                 scale = fnScale(datum);
                 p0 = scale.domain()[0];
                 p1 = scale.domain()[1];
                 
-                // Line geometry
-                geometry = new THREE.Geometry();
-                geometry.vertices.push(getLineEndVertex(gl, orient, p0));
-                geometry.vertices.push(getLineEndVertex(gl, orient, p1));
+                /* Create axis as line */
+                var lineGeometry, v0, v1, lineMaterial, line;
+                
+                // Line lineGeometry
+                lineGeometry = new THREE.Geometry();
+                lineGeometry.vertices.push(getPointOnAxis(gl, orient, p0));
+                lineGeometry.vertices.push(getPointOnAxis(gl, orient, p1));
 
                 // Line material
-                material = new THREE.LineBasicMaterial({
+                lineMaterial = new THREE.LineBasicMaterial({
                     'color': new THREE.Color(0x000000),
                     'opacity': 1,
-                    'linewidth': 3}); 
+                    'linewidth': 3
+                }); 
                 
                 // Create and add line
-                line = new THREE.Line(geometry, material);
+                line = new THREE.Line(lineGeometry, lineMaterial);
                 gl.scene.add(line);
                 gl.meshes.axis.push(line);
+
+                /* Create tick marks as particles with texture */ 
+                var ticks;
+                ticks = fnTicks(datum);
+                if (typeof ticks === "number") {
+                    var numTicks = ticks;
+                    var step = (p1 - p0) / numTicks;
+                    ticks = [];
+                    for (var i = 0; i < numTicks; i++) {
+                        ticks.push(p0 + i*step);
+                    }
+                }
+
+                var tickMarks = new THREE.Object3D();
+                ticks.forEach(function(tick) {
+                    var tickMark = new THREE.Geometry();
+                    tickMark.vertices = [getPointOnAxis(gl, orient, tick)];
+                    var tex = new THREE.Texture(generateTickMarkTexture(tick));
+                    tex.needsUpdate = true;
+                    var t = new THREE.ParticleSystem(tickMark, new THREE.ParticleBasicMaterial({'size': 1.0, 'map': tex, 'transparent': true, 'depthTest': false}));
+                    tickMarks.add(t);
+                });
+                gl.scene.add(tickMarks);
+                gl.meshes.axis.push(tickMarks);
             });
-/*
-(1) Get data array from fnData(gl.datum)
-... for each datum in the data array
-(2) create one line geometry going from domain.start to domain.end
-(3) create group of particles to render text
-(4) add them to gl.meshes.axis
-*/
+
             update = false;
         };
-        function getLineEndVertex(gl, orient, p) {
+        function getPointOnAxis(gl, orient, p) {
             var v = new THREE.Vector3(
                 orient === "x" ? p : 0,
                 orient === "y" ? p : 0,
@@ -2121,6 +2143,21 @@ d3.gl.pointcloud = function() {
             v.add(gl.centerTranslation);
             v.multiplyScalar(gl.scale);
             return v;
+        }
+        function generateTickMarkTexture(tick) {
+            // create canvas
+            var size = 64;
+            var canvas = document.createElement( 'canvas' );
+            canvas.width = size;
+            canvas.height = size;
+            
+            var context = canvas.getContext( '2d' );
+
+            context.fillStyle = "#000";
+            context.font = "bold 16px Arial";
+            context.fillText(tick, 20, 20);
+
+            return canvas;
         }
         axis.data = function(val) {
             if (arguments.length===0) return fnData;
@@ -2146,9 +2183,23 @@ d3.gl.pointcloud = function() {
             else fnOrient = function() { return val;};
             return axis;
         };
+        // val can be one of the following:
+        // {number}
+        // {Array<number>}
+        // function(d, i) { return {Array<number> }
+        // function(d, i) { return {number} }
+        // {number} will be the number of ticks
+        // {Array<number>} will have the specific tick marks on the axis
+        axis.ticks = function(val) {
+            if (arguments.length===0) return fnTicks;
+            if (typeof val === "function") fnTicks = val;
+            else fnTicks = function() { return val;};
+            return axis;
+        };
 
         overlay3D.push(axis);
         return axis;
     };
+
     return pointcloud;
 };

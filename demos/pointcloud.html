@@ -40,7 +40,8 @@ $(function(){
         var axes = pointcloud.axis()
             .data(["x", "y", "z"])
             .scale(function(d) { return scales[d]; })
-            .orient(function(d) { return d; });
+            .orient(function(d) { return d; })
+            .ticks(10);
 
         d3.select("body").selectAll("span")
             .data(["pointcloud-house"]).enter().append("span")
