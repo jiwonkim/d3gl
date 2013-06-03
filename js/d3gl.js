@@ -32,8 +32,8 @@ d3.gl = function() {
         if (arguments.length === 0) return mouseEventCallback;
         else mouseEventCallback = val;
     }
-    d3gl.init = function(gl) {
-        initGL(gl);
+    d3gl.init = function(gl, ortho) {
+        initGL(gl, ortho);
         initControls(gl, gl.renderer.domElement);
         initStyle(gl.renderer.domElement); // <canvas> style
     };
@@ -100,7 +100,6 @@ d3.gl = function() {
             }
         } 
     }
-
     function getBoundingBox(model) {
         if (!model || !model.geometry) return null;
         model.geometry.computeBoundingBox();
@@ -177,20 +176,37 @@ d3.gl = function() {
             else if(key=="s") zoomUpdate(1.2); // zoom out
             else if(key=="a") d3gl.rotation.lon -= 10;
             else if(key=="d") d3gl.rotation.lon += 10;
+            else if(key=="x") {
+              d3gl.rotation.lat = 180;
+              d3gl.rotation.lon = 270;
+            }
+            else if (key=="y") {
+              d3gl.rotation.lat = -90;
+              d3gl.rotation.lon = 0;
+            }
+            else if (key=="z") {
+              d3gl.rotation.lat = 180;
+              d3gl.rotation.lon = 0;
+            }
             else return;
             evt.preventDefault();
         });
     }
-    function initGL(gl) {
+    function initGL(gl, ortho) {
         var scene, camera, renderer;
 
         // scene
         scene = new THREE.Scene();
 
         // camera
-        camera = new THREE.PerspectiveCamera(
-            VIEW_ANGLE, width/height,
-            NEAR, FAR);
+        if (ortho) {
+          camera = new THREE.OrthographicCamera(
+              -width/height, width/height, -1, 1);
+        } else {
+          camera = new THREE.PerspectiveCamera(
+              VIEW_ANGLE, width/height,
+              NEAR, FAR);
+        }
         camera.position.z = 2;
         scene.add(camera);
 
@@ -208,6 +224,7 @@ d3.gl = function() {
     }
 
     function zoomUpdate(val) {
+        //TODO: in orthographic perspective, just make the camera window smaller
         zoom *= val;
         zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
     };
@@ -1950,7 +1967,8 @@ d3.gl.pointcloud = function() {
         gl.index = i;
         gl.meshes = {'pointcloud': []};
 
-        d3gl.init(gl);
+        // Pass in true for orthographic perspective
+        d3gl.init(gl, true);
         initPointcloud(gl);
 
         // Add canvas to DOM
@@ -1968,7 +1986,7 @@ d3.gl.pointcloud = function() {
 
         Object.keys(gl.meshes).forEach(function(key) {
             gl.meshes[key].forEach(function(m) {
-                m.rotation.x = d3gl.rotation.lat*Math.PI/180;
+                m.rotation.x = -d3gl.rotation.lat*Math.PI/180;
                 m.rotation.y = -d3gl.rotation.lon*Math.PI/180;
             }); 
         });
@@ -2057,10 +2075,16 @@ d3.gl.pointcloud = function() {
     };
 
     /** AXIS **/
+    //TODO: make ticks and label separate closures under axis
+    // make tick & label size in terms of pointcloud dimensions
+    // (i.e. scale it with gl.scale)
     pointcloud.axis = function() {
         var update = true;
         var fnData = function(d) { return d; };
-        var fnScale, fnOrient;
+        var fnScale, fnOrient, fnThickness;
+        var fnTicks, fnTickFormat, fnTickSize,
+            fnTickFont, fnTickResolution, fnTickColor;
+        var fnLabel, fnLabelSize, fnLabelFont, fnLabelResolution;
 
         // Called once per frame
         var axis = function(gl) {
@@ -2081,59 +2105,123 @@ d3.gl.pointcloud = function() {
             // For each axis, create and add meshes to scene
             data.forEach(function(datum) {
                 var orient, scale, p0, p1;
-
                 orient = fnOrient(datum);
                 scale = fnScale(datum);
                 p0 = scale.domain()[0];
                 p1 = scale.domain()[1];
-                
-                /* Create axis as line */
-                var lineGeometry, v0, v1, lineMaterial, line;
-                
-                // Line lineGeometry
-                lineGeometry = new THREE.Geometry();
-                lineGeometry.vertices.push(getPointOnAxis(gl, orient, p0));
-                lineGeometry.vertices.push(getPointOnAxis(gl, orient, p1));
 
-                // Line material
-                lineMaterial = new THREE.LineBasicMaterial({
-                    'color': new THREE.Color(0x000000),
-                    'opacity': 1,
-                    'linewidth': 3
-                }); 
-                
-                // Create and add line
-                line = new THREE.Line(lineGeometry, lineMaterial);
-                gl.scene.add(line);
-                gl.meshes.axis.push(line);
+                /* Create axis as line */
+                drawLine(gl, datum);
 
                 /* Create tick marks as particles with texture */ 
-                var ticks;
-                ticks = fnTicks(datum);
-                if (typeof ticks === "number") {
-                    var numTicks = ticks;
-                    var step = (p1 - p0) / numTicks;
-                    ticks = [];
-                    for (var i = 0; i < numTicks; i++) {
-                        ticks.push(p0 + i*step);
-                    }
-                }
+                drawTicks(gl, datum);
 
-                var tickMarks = new THREE.Object3D();
-                ticks.forEach(function(tick) {
-                    var tickMark = new THREE.Geometry();
-                    tickMark.vertices = [getPointOnAxis(gl, orient, tick)];
-                    var tex = new THREE.Texture(generateTickMarkTexture(tick));
-                    tex.needsUpdate = true;
-                    var t = new THREE.ParticleSystem(tickMark, new THREE.ParticleBasicMaterial({'size': 1.0, 'map': tex, 'transparent': true, 'depthTest': false}));
-                    tickMarks.add(t);
-                });
-                gl.scene.add(tickMarks);
-                gl.meshes.axis.push(tickMarks);
+                /* Create a label for the axis */
+                drawLabel(gl, datum);
             });
 
             update = false;
         };
+        function drawLine(gl, datum) {
+            var orient, scale, p0, p1;
+            orient = fnOrient(datum);
+            scale = fnScale(datum);
+            p0 = scale.domain()[0];
+            p1 = scale.domain()[1];
+            
+            var lineGeometry, v0, v1, lineMaterial, line;
+            
+            // Line lineGeometry
+            lineGeometry = new THREE.Geometry();
+            lineGeometry.vertices.push(getPointOnAxis(gl, orient, p0));
+            lineGeometry.vertices.push(getPointOnAxis(gl, orient, p1));
+
+            // Line material
+            lineMaterial = new THREE.LineBasicMaterial({
+                'color': new THREE.Color(0x000000),
+                'opacity': 1,
+                'linewidth': fnThickness ? fnThickness(datum) : 3
+            }); 
+            
+            // Create and add line
+            line = new THREE.Line(lineGeometry, lineMaterial);
+            gl.scene.add(line);
+            gl.meshes.axis.push(line);
+        }
+        function drawTicks(gl, datum) {
+            var orient, scale, ticks, tickMarks;
+            orient = fnOrient(datum);
+            scale = fnScale(datum);
+
+            // TICKS should be an array of tick marks on the axis
+            // ex) [-1, 0, 1]
+            ticks = fnTicks(datum);
+            if (typeof ticks === "number") {
+              ticks = scale.ticks(ticks);
+            }
+
+            // tickMarks is a group of tickMark meshes
+            tickMarks = new THREE.Object3D();
+
+            // For each tick, create a tick mesh (a particle system with one
+            // particle) and add it to tickMarks
+            ticks.forEach(function(tick) {
+                var tickMark, tickTex, tickMesh, tickSize, tickFont, tickColor;
+                
+                // Format tick if user has specified a formatting function
+                if (fnTickFormat) tick = fnTickFormat(tick);
+
+                tickMark = new THREE.Geometry();
+                tickMark.vertices = [getPointOnAxis(gl, orient, tick)];
+
+                if (fnTickResolution) tickResolution = fnTickResolution(datum);
+                if (fnTickFont) tickFont = fnTickFont(datum);
+                if (fnTickColor) tickColor = fnTickColor(datum);
+                tickTex = new THREE.Texture(generateTickMarkTexture(tick, tickResolution, tickFont, tickColor));
+                tickTex.needsUpdate = true;
+
+                if (fnTickSize) tickSize = fnTickSize(datum);
+                tickMesh = new THREE.ParticleSystem(tickMark, new THREE.ParticleBasicMaterial({
+                    'size': tickSize, 'map': tickTex, 'transparent': true, 'depthTest': false}));
+
+                tickMarks.add(tickMesh);
+            });
+
+            gl.scene.add(tickMarks);
+            gl.meshes.axis.push(tickMarks);
+        }
+        function drawLabel(gl, datum) {
+            var orient, scale, p0, p1;
+            orient = fnOrient(datum);
+            scale = fnScale(datum);
+            p0 = scale.domain()[0];
+            p1 = scale.domain()[1];
+
+            var label, labelGeometry, labelTex, labelMesh;
+            label = fnLabel ? fnLabel(datum) : orient;
+
+            labelGeometry = new THREE.Geometry();
+            labelGeometry.vertices = [getPointOnAxis(gl, orient, p1)];
+
+            var labelResolution, labelFont;
+            if (fnLabelResolution) labelResolution = fnLabelResolution(datum);
+            if (fnLabelFont) labelFont = fnLabelFont(datum);
+            if (fnLabelColor) labelColor = fnLabelColor(datum);
+            labelTex = new THREE.Texture(generateTickMarkTexture(
+              label, labelResolution, labelFont, labelColor));  
+            labelTex.needsUpdate = true;
+
+            labelMesh = new THREE.ParticleSystem(labelGeometry,
+                new THREE.ParticleBasicMaterial({
+                    'size': fnLabelSize ? fnLabelSize(datum) : 1,
+                    'map': labelTex,
+                    'transparent': true,
+                    'depthTest': false
+                })
+            );
+            gl.scene.add(labelMesh);
+            gl.meshes.axis.push(labelMesh);
+        }
         function getPointOnAxis(gl, orient, p) {
             var v = new THREE.Vector3(
                 orient === "x" ? p : 0,
@@ -2144,18 +2232,18 @@ d3.gl.pointcloud = function() {
             v.multiplyScalar(gl.scale);
             return v;
         }
-        function generateTickMarkTexture(tick) {
+        function generateTickMarkTexture(tick, size, font, color) {
             // create canvas
-            var size = 64;
-            var canvas = document.createElement( 'canvas' );
+            size = size ? size : 64;
+            var canvas = document.createElement('canvas');
             canvas.width = size;
             canvas.height = size;
             
             var context = canvas.getContext( '2d' );
 
-            context.fillStyle = "#000";
-            context.font = "bold 16px Arial";
-            context.fillText(tick, 20, 20);
+            context.fillStyle = color ? color : "#000";
+            context.font = font ? font : "bold 16px Arial";
+            context.fillText(tick, size/3, size/3);
 
             return canvas;
         }
@@ -2183,6 +2271,12 @@ d3.gl.pointcloud = function() {
             else fnOrient = function() { return val;};
             return axis;
         };
+        axis.thickness = function(val) {
+            if (arguments.length===0) return fnThickness;
+            if (typeof val === "function") fnThickness = val;
+            else fnThickness = function() { return val;};
+            return axis;
+        };
         // val can be one of the following:
         // {number}
         // {Array<number>}
@@ -2194,6 +2288,68 @@ d3.gl.pointcloud = function() {
             if (arguments.length===0) return fnTicks;
             if (typeof val === "function") fnTicks = val;
             else fnTicks = function() { return val;};
+            return axis;
+        };
+        /** TICK SPECIFICS **/
+        axis.tickFormat = function(val) {
+            if (arguments.length===0) return fnTickFormat;
+            if (typeof val === "function") fnTickFormat = val;
+            else fnTickFormat = function() { return val;};
+            return axis;
+        };
+        axis.tickSize = function(val) {
+            if (arguments.length===0) return fnTickSize;
+            if (typeof val === "function") fnTickSize = val;
+            else fnTickSize = function() { return val;};
+            return axis;
+        };
+        axis.tickResolution = function(val) {
+            if (arguments.length===0) return fnTickResolution;
+            if (typeof val === "function") fnTickResolution = val;
+            else fnTickResolution = function() { return val;};
+            return axis;
+        };
+        axis.tickFont = function(val) {
+            if (arguments.length===0) return fnTickFont;
+            if (typeof val === "function") fnTickFont = val;
+            else fnTickFont = function() { return val;};
+            return axis;
+        };
+        axis.tickColor = function(val) {
+            if (arguments.length===0) return fnTickColor;
+            if (typeof val === "function") fnTickColor = val;
+            else fnTickColor = function() { return val;};
+            return axis;
+        };
+        /** LABEL SPECIFICS **/
+        axis.label = function(val) {
+            if (arguments.length===0) return fnLabel;
+            if (typeof val === "function") fnLabel = val;
+            else fnLabel = function() { return val;};
+            return axis;
+        }
+        axis.labelSize = function(val) {
+            if (arguments.length===0) return fnLabelSize;
+            if (typeof val === "function") fnLabelSize = val;
+            else fnLabelSize = function() { return val;};
+            return axis;
+        };
+        axis.labelResolution = function(val) {
+            if (arguments.length===0) return fnLabelResolution;
+            if (typeof val === "function") fnLabelResolution = val;
+            else fnLabelResolution = function() { return val;};
+            return axis;
+        };
+        axis.labelFont = function(val) {
+            if (arguments.length===0) return fnLabelFont;
+            if (typeof val === "function") fnLabelFont = val;
+            else fnLabelFont = function() { return val;};
+            return axis;
+        };
+        axis.labelColor = function(val) {
+            if (arguments.length===0) return fnLabelColor;
+            if (typeof val === "function") fnLabelColor = val;
+            else fnLabelColor = function() { return val;};
             return axis;
         };
 
