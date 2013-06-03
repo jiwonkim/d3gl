@@ -37,11 +37,12 @@ $(function(){
             "y": d3.scale.linear().domain([-40, 40]),
             "z": d3.scale.linear().domain([0, 100])
         };
-        var axes = pointcloud.axis()
+        var axis = pointcloud.axis()
             .data(["x", "y", "z"])
             .scale(function(d) { return scales[d]; })
             .orient(function(d) { return d; })
-            .thickness(1)
+            .thickness(1);
+            /*
             .ticks(function(d) {
               if (d == "z") return 5;
               else return 4;
@@ -53,6 +54,21 @@ $(function(){
             .labelResolution(128)
             .labelFont("bold 20px Helvetica")
             .labelColor("#00f");
+            */
+        var ticks = axis.ticks()
+          .count(function(d) {
+              if (d=="z") return 5;
+              else return 4;
+          })
+          .font("16px Arial")
+          .size(0.5)
+          .resolution(64);
+        
+        var label = axis.label()
+          .size(1)
+          .resolution(128)
+          .font("bold 20px Helvetica")
+          .color("#00f");
 
         d3.select("body").selectAll("span")
             .data(["pointcloud-house"]).enter().append("span")

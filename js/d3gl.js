@@ -2082,9 +2082,12 @@ d3.gl.pointcloud = function() {
         var update = true;
         var fnData = function(d) { return d; };
         var fnScale, fnOrient, fnThickness;
+        /*
         var fnTicks, fnTickFormat, fnTickSize,
             fnTickFont, fnTickResolution, fnTickColor;
+            */
         var fnLabel, fnLabelSize, fnLabelFont, fnLabelResolution;
+        var ticksRenderer, labelRenderer;
 
         // Called once per frame
         var axis = function(gl) {
@@ -2114,10 +2117,10 @@ d3.gl.pointcloud = function() {
                 drawLine(gl, datum);
 
                 /* Create tick marks as particles with texture */ 
-                drawTicks(gl, datum);
+                if(ticksRenderer) ticksRenderer(gl, datum);
 
                 /* Create a label for the axis */
-                drawLabel(gl, datum);
+                if(labelRenderer) labelRenderer(gl, datum);
             });
 
             update = false;
@@ -2147,80 +2150,6 @@ d3.gl.pointcloud = function() {
             line = new THREE.Line(lineGeometry, lineMaterial);
             gl.scene.add(line);
             gl.meshes.axis.push(line);
-        }
-        function drawTicks(gl, datum) {
-            var orient, scale, ticks, tickMarks;
-            orient = fnOrient(datum);
-            scale = fnScale(datum);
-
-            // TICKS should be an array of tick marks on the axis
-            // ex) [-1, 0, 1]
-            ticks = fnTicks(datum);
-            if (typeof ticks === "number") {
-              ticks = scale.ticks(ticks);
-            }
-
-            // tickMarks is a group of tickMark meshes
-            tickMarks = new THREE.Object3D();
-
-            // For each tick, create a tick mesh (a particle system with one
-            // particle) and add it to tickMarks
-            ticks.forEach(function(tick) {
-                var tickMark, tickTex, tickMesh, tickSize, tickFont, tickColor;
-                
-                // Format tick if user has specified a formatting function
-                if (fnTickFormat) tick = fnTickFormat(tick);
-
-                tickMark = new THREE.Geometry();
-                tickMark.vertices = [getPointOnAxis(gl, orient, tick)];
-
-                if (fnTickResolution) tickResolution = fnTickResolution(datum);
-                if (fnTickFont) tickFont = fnTickFont(datum);
-                if (fnTickColor) tickColor = fnTickColor(datum);
-                tickTex = new THREE.Texture(generateTickMarkTexture(tick, tickResolution, tickFont, tickColor));
-                tickTex.needsUpdate = true;
-
-                if (fnTickSize) tickSize = fnTickSize(datum);
-                tickMesh = new THREE.ParticleSystem(tickMark, new THREE.ParticleBasicMaterial({
-                    'size': tickSize, 'map': tickTex, 'transparent': true, 'depthTest': false}));
-
-                tickMarks.add(tickMesh);
-            });
-
-            gl.scene.add(tickMarks);
-            gl.meshes.axis.push(tickMarks);
-        }
-        function drawLabel(gl, datum) {
-            var orient, scale, p0, p1;
-            orient = fnOrient(datum);
-            scale = fnScale(datum);
-            p0 = scale.domain()[0];
-            p1 = scale.domain()[1];
-
-            var label, labelGeometry, labelTex, labelMesh;
-            label = fnLabel ? fnLabel(datum) : orient;
-
-            labelGeometry = new THREE.Geometry();
-            labelGeometry.vertices = [getPointOnAxis(gl, orient, p1)];
-
-            var labelResolution, labelFont;
-            if (fnLabelResolution) labelResolution = fnLabelResolution(datum);
-            if (fnLabelFont) labelFont = fnLabelFont(datum);
-            if (fnLabelColor) labelColor = fnLabelColor(datum);
-            labelTex = new THREE.Texture(generateTickMarkTexture(
-              label, labelResolution, labelFont, labelColor));  
-            labelTex.needsUpdate = true;
-
-            labelMesh = new THREE.ParticleSystem(labelGeometry,
-                new THREE.ParticleBasicMaterial({
-                    'size': fnLabelSize ? fnLabelSize(datum) : 1,
-                    'map': labelTex,
-                    'transparent': true,
-                    'depthTest': false
-                })
-            );
-            gl.scene.add(labelMesh);
-            gl.meshes.axis.push(labelMesh);
         }
         function getPointOnAxis(gl, orient, p) {
             var v = new THREE.Vector3(
@@ -2277,80 +2206,167 @@ d3.gl.pointcloud = function() {
             else fnThickness = function() { return val;};
             return axis;
         };
-        // val can be one of the following:
-        // {number}
-        // {Array<number>}
-        // function(d, i) { return {Array<number> }
-        // function(d, i) { return {number} }
-        // {number} will be the number of ticks
-        // {Array<number>} will have the specific tick marks on the axis
-        axis.ticks = function(val) {
-            if (arguments.length===0) return fnTicks;
-            if (typeof val === "function") fnTicks = val;
-            else fnTicks = function() { return val;};
-            return axis;
+
+        axis.ticks = function() {
+            var fnCount, fnFormat, fnSize,
+                fnFont, fnResolution, fnColor;
+            //TODO fnValues
+
+            var ticks = function(gl, datum) {
+                var orient, scale, ticks, count, tickMarks;
+                orient = fnOrient(datum);
+                scale = fnScale(datum);
+
+                // TICKS should be an array of tick marks on the axis
+                // ex) [-1, 0, 1]
+                ticks = scale.ticks(fnCount(datum));
+
+                // tickMarks is a group of tickMark meshes
+                tickMarks = new THREE.Object3D();
+
+                // For each tick, create a tick mesh (a particle system with one
+                // particle) and add it to tickMarks
+                ticks.forEach(function(tick) {
+                    var tickMark, tickTex, tickMesh, tickSize, tickFont, tickColor;
+                    
+                    // Format tick if user has specified a formatting function
+                    if (fnFormat) tick = fnFormat(tick);
+
+                    tickMark = new THREE.Geometry();
+                    tickMark.vertices = [getPointOnAxis(gl, orient, tick)];
+
+                    if (fnResolution) tickResolution = fnResolution(datum);
+                    if (fnFont) tickFont = fnFont(datum);
+                    if (fnColor) tickColor = fnColor(datum);
+                    tickTex = new THREE.Texture(generateTickMarkTexture(
+                        tick, tickResolution, tickFont, tickColor));
+                    tickTex.needsUpdate = true;
+
+                    if (fnSize) tickSize = fnSize(datum);
+                    tickMesh = new THREE.ParticleSystem(tickMark,
+                        new THREE.ParticleBasicMaterial({
+                            'size': tickSize,
+                            'map': tickTex,
+                            'transparent': true,
+                            'depthTest': false
+                        })
+                    );
+                    tickMarks.add(tickMesh);
+                });
+
+                gl.scene.add(tickMarks);
+                gl.meshes.axis.push(tickMarks);
+            };
+
+            ticks.count = function(val) {
+                if (arguments.length===0) return fnCount;
+                if (typeof val === "function") fnCount = val;
+                else fnCount = function() { return val;};
+                return ticks;
+            };
+            ticks.format = function(val) {
+                if (arguments.length===0) return fnFormat;
+                if (typeof val === "function") fnFormat = val;
+                else fnFormat = function() { return val;};
+                return ticks;
+            };
+            ticks.size = function(val) {
+                if (arguments.length===0) return fnSize;
+                if (typeof val === "function") fnSize = val;
+                else fnSize = function() { return val;};
+                return ticks;
+            };
+            ticks.resolution = function(val) {
+                if (arguments.length===0) return fnResolution;
+                if (typeof val === "function") fnResolution = val;
+                else fnResolution = function() { return val;};
+                return ticks;
+            };
+            ticks.font = function(val) {
+                if (arguments.length===0) return fnFont;
+                if (typeof val === "function") fnFont = val;
+                else fnFont = function() { return val;};
+                return ticks;
+            };
+            ticks.color = function(val) {
+                if (arguments.length===0) return fnColor;
+                if (typeof val === "function") fnColor = val;
+                else fnColor = function() { return val;};
+                return ticks;
+            };
+            
+            ticksRenderer = ticks;
+            return ticks;
         };
-        /** TICK SPECIFICS **/
-        axis.tickFormat = function(val) {
-            if (arguments.length===0) return fnTickFormat;
-            if (typeof val === "function") fnTickFormat = val;
-            else fnTickFormat = function() { return val;};
-            return axis;
-        };
-        axis.tickSize = function(val) {
-            if (arguments.length===0) return fnTickSize;
-            if (typeof val === "function") fnTickSize = val;
-            else fnTickSize = function() { return val;};
-            return axis;
-        };
-        axis.tickResolution = function(val) {
-            if (arguments.length===0) return fnTickResolution;
-            if (typeof val === "function") fnTickResolution = val;
-            else fnTickResolution = function() { return val;};
-            return axis;
-        };
-        axis.tickFont = function(val) {
-            if (arguments.length===0) return fnTickFont;
-            if (typeof val === "function") fnTickFont = val;
-            else fnTickFont = function() { return val;};
-            return axis;
-        };
-        axis.tickColor = function(val) {
-            if (arguments.length===0) return fnTickColor;
-            if (typeof val === "function") fnTickColor = val;
-            else fnTickColor = function() { return val;};
-            return axis;
-        };
-        /** LABEL SPECIFICS **/
-        axis.label = function(val) {
-            if (arguments.length===0) return fnLabel;
-            if (typeof val === "function") fnLabel = val;
-            else fnLabel = function() { return val;};
-            return axis;
-        }
-        axis.labelSize = function(val) {
-            if (arguments.length===0) return fnLabelSize;
-            if (typeof val === "function") fnLabelSize = val;
-            else fnLabelSize = function() { return val;};
-            return axis;
-        };
-        axis.labelResolution = function(val) {
-            if (arguments.length===0) return fnLabelResolution;
-            if (typeof val === "function") fnLabelResolution = val;
-            else fnLabelResolution = function() { return val;};
-            return axis;
-        };
-        axis.labelFont = function(val) {
-            if (arguments.length===0) return fnLabelFont;
-            if (typeof val === "function") fnLabelFont = val;
-            else fnLabelFont = function() { return val;};
-            return axis;
-        };
-        axis.labelColor = function(val) {
-            if (arguments.length===0) return fnLabelColor;
-            if (typeof val === "function") fnLabelColor = val;
-            else fnLabelColor = function() { return val;};
-            return axis;
+
+        axis.label = function() {
+            var fnText, fnSize, fnResolution, fnFont, fnColor;
+
+            var label = function(gl, datum) {
+                var orient, scale, p0, p1;
+                orient = fnOrient(datum);
+                scale = fnScale(datum);
+                p0 = scale.domain()[0];
+                p1 = scale.domain()[1];
+
+                var label, labelGeometry, labelTex, labelMesh;
+                label = fnLabel ? fnLabel(datum) : orient;
+
+                labelGeometry = new THREE.Geometry();
+                labelGeometry.vertices = [getPointOnAxis(gl, orient, p1)];
+
+                var labelResolution, labelFont, labelColor;
+                if (fnResolution) labelResolution = fnResolution(datum);
+                if (fnFont) labelFont = fnFont(datum);
+                if (fnColor) labelColor = fnColor(datum);
+                labelTex = new THREE.Texture(generateTickMarkTexture(
+                  label, labelResolution, labelFont, labelColor));  
+                labelTex.needsUpdate = true;
+
+                labelMesh = new THREE.ParticleSystem(labelGeometry,
+                    new THREE.ParticleBasicMaterial({
+                        'size': fnSize ? fnSize(datum) : 1,
+                        'map': labelTex,
+                        'transparent': true,
+                        'depthTest': false
+                    })
+                );
+                gl.scene.add(labelMesh);
+                gl.meshes.axis.push(labelMesh);
+            };
+            label.text = function(val) {
+                if (arguments.length===0) return fnText;
+                if (typeof val === "function") fnText = val;
+                else fnText = function() { return val;};
+                return label;
+            }
+            label.size = function(val) {
+                if (arguments.length===0) return fnSize;
+                if (typeof val === "function") fnSize = val;
+                else fnSize = function() { return val;};
+                return label;
+            };
+            label.resolution = function(val) {
+                if (arguments.length===0) return fnResolution;
+                if (typeof val === "function") fnResolution = val;
+                else fnResolution = function() { return val;};
+                return label;
+            };
+            label.font = function(val) {
+                if (arguments.length===0) return fnFont;
+                if (typeof val === "function") fnFont = val;
+                else fnFont = function() { return val;};
+                return label;
+            };
+            label.color = function(val) {
+                if (arguments.length===0) return fnColor;
+                if (typeof val === "function") fnColor = val;
+                else fnColor = function() { return val;};
+                return label;
+            };
+
+            labelRenderer = label;
+            return label;
         };
 
         overlay3D.push(axis);
