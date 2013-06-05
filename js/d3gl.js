@@ -1,8 +1,5 @@
 // Jiwon Kim and Dan Posch
 // {jiwonk, dcposch}@cs.stanford.edu
-// CS448B Final Project
-
-// See README.md for examples.
 
 // check prerequisites 
 if(!d3 || !jQuery || !THREE || !requestAnimationFrame){
@@ -2364,6 +2361,12 @@ d3.gl.pointcloud = function() {
                 else fnColor = function() { return val;};
                 return label;
             };
+						label.offset = function(val) {
+                if (arguments.length===0) return fnOffset;
+                if (typeof val === "function") fnOffset = val;
+                else fnOffset = function() { return val;};
+                return label;
+						};
 
             labelRenderer = label;
             return label;

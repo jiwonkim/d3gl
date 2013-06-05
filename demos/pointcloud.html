@@ -42,19 +42,7 @@ $(function(){
             .scale(function(d) { return scales[d]; })
             .orient(function(d) { return d; })
             .thickness(1);
-            /*
-            .ticks(function(d) {
-              if (d == "z") return 5;
-              else return 4;
-            })
-            .tickFont("16px Arial")
-            .tickSize(0.5)
-            .tickResolution(64)
-            .labelSize(1)
-            .labelResolution(128)
-            .labelFont("bold 20px Helvetica")
-            .labelColor("#00f");
-            */
+
         var ticks = axis.ticks()
           .count(function(d) {
               if (d=="z") return 5;
