@@ -72,7 +72,15 @@ d3.gl = function() {
         translateModelVertices(model, gl.centerTranslation);
         model.updateMatrix();
     };
-    d3gl.centerPointcloud = function(pointcloud) {
+    d3gl.centerModelByWeight = function(model) {
+				var centerPoint = new THREE.Vector3();
+				addVertices(model, centerPoint);
+				centerPoint.multiplyScalar(1/countVertices(model));
+				gl.centerTranslation = new THREE.Vector3().subVectors(
+					model.position, centerPoint);
+        translateModelVertices(model, gl.centerTranslation);
+        model.updateMatrix();
+			/*
         var count = pointcloud.geometry.vertices.length;
         var centerPoint = new THREE.Vector3();
         pointcloud.geometry.vertices.forEach(function(vertex) {
@@ -84,6 +92,7 @@ d3.gl = function() {
         
         translateModelVertices(pointcloud, gl.centerTranslation);
         pointcloud.updateMatrix();
+				*/
     };
     function translateModelVertices(model, translation) {
         if(model.geometry){
@@ -97,6 +106,29 @@ d3.gl = function() {
             }
         } 
     }
+		function countVertices(model) {
+				if (!model) return null;
+				if (!model.geometry) {
+						var count = 0; 
+						model.children.forEach(function(child) {
+								count += countVertices(child);
+						});
+						return count;
+				}
+				return model.geometry.vertices.length;
+		}
+		function addVertices(model, sum) {
+				if (!model) return null;
+				if (!model.geometry) {
+						model.children.forEach(function(child) {
+								addVertices(child, sum);
+						});
+				} else {
+						model.geometry.vertices.forEach(function(vertex) {
+								sum.add(vertex);
+						});
+				}
+		}
     function getBoundingBox(model) {
 				if (!model) return null;
 				if (!model.geometry) {
@@ -2053,7 +2085,7 @@ d3.gl.graph = function() {
 						gl.meshes['points'].push(pointcloud);
 
 						d3gl.scaleModel(pointcloud, scale);
-						d3gl.centerPointcloud(pointcloud);
+						d3gl.centerModelByWeight(pointcloud);
 						gl.scene.add(pointcloud);
 				}
 				function generatePointTexture() {
@@ -2108,6 +2140,7 @@ d3.gl.graph = function() {
 				var linesUpdate = true;
         var fnData = function(d) { return d; };
         var fnVertices = function(d) { return d; };
+				var fnColor, fnThickness;
 
 				var lines = function(gl) {
 						if (!linesUpdate) return;
@@ -2120,7 +2153,7 @@ d3.gl.graph = function() {
 						var dataArray = fnData(gl.datum, gl.index);
 						$.each(dataArray, function(index, datum) {
 								var vertices = fnVertices(datum, index);
-								var geometry, material, line;
+								var geometry, material, line, color, thickness;
 
 								geometry = new THREE.Geometry();
 								for (var i = 0; i < vertices.length; i += 3) {
@@ -2133,10 +2166,13 @@ d3.gl.graph = function() {
 								}
 
 								// TODO use fnColor, fnThickness
+								color = fnColor ?  new THREE.Color(fnColor(datum)) :
+									new THREE.Color(0x000000);
+								thickness = fnThickness ? fnThickness(datum) : 2;
 								material = new THREE.LineBasicMaterial({
-										'color': new THREE.Color(0x000000),
+										'color': color,
 										'opacity': 1,
-										'linewidth': 3
+										'linewidth': thickness
 								}); 
 								
 								// Create line and adjust model to fit viewport
@@ -2144,11 +2180,15 @@ d3.gl.graph = function() {
 								linesObject.add(line);
 						});
 						d3gl.scaleModel(linesObject, 1);
-						d3gl.centerModel(linesObject);
+						d3gl.centerModelByWeight(linesObject);
 
 						// Add line
 						gl.scene.add(linesObject);
 						gl.meshes['lines'].push(linesObject);
+
+						// TODO: dragging is really bad with none-globe things...
+						//gl.renderer.sortObjects = true;
+						//gl.renderer.sortElements = true;
 				};
 
 				lines.data = function(val) {
@@ -2163,7 +2203,18 @@ d3.gl.graph = function() {
 						else fnVertices = function() { return val; };
 						return lines;
 				};
-
+				lines.color = function(val) {
+						if (arguments.length===0) return fnColor;
+						if (typeof val === "function") fnColor = val;
+						else fnColor = function() { return val; };
+						return lines;
+				};
+				lines.thickness = function(val) {
+						if (arguments.length===0) return fnThickness;
+						if (typeof val === "function") fnThickness = val;
+						else fnThickness = function() { return val; };
+						return lines;
+				};
 
 				overlay3D.push(lines);
 				return lines;

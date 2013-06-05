@@ -6,11 +6,12 @@ Converts
 """
 class Node:
 
-	def __init__(self, x, y, z, t, parentIdx):
+	def __init__(self, x, y, z, t, r, parentIdx):
 		self.x = x
 		self.y = y
 		self.z = z
-		self.t = t # type
+		self.celltype = t # type
+		self.radius = r
 		self.parentIdx = parentIdx # idx for parent node
 		self.children = []
 	
@@ -19,7 +20,7 @@ class Node:
 	
 	@staticmethod
 	def emptyNode():
-		return Node(0, 0, 0, 0, 0)
+		return Node(0, 0, 0, 0, 0, 0)
 
 def readNeuromanticSWC(filename):
 	#swc = open('../models/brains/02a_pyramidal2aFI.CNG.swc');
@@ -33,8 +34,13 @@ def readNeuromanticSWC(filename):
 		if elems[0] == '':
 			elems.pop(0)
 
+		celltype = elems[1]
+		x = elems[2]
+		y = elems[3]
+		z = elems[4]
+		radius = elems[-2]
 		root = int(elems[-1])
-		node = Node(elems[2], elems[3], elems[4], elems[1], root)
+		node = Node(x, y, z, celltype, radius, root)
 		if root > 0:
 			nodes[root].addChild(len(nodes))
 
@@ -85,6 +91,8 @@ def buildJSON(nodes, root):
 		if len(branch) > 3:
 			lines.append({
 				'level': level,
+				'type': node.celltype,
+				'radius': node.radius,
 				'vertices': branch
 			})
 			print "Added branch ", len(lines) - 1
