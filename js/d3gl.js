@@ -93,12 +93,19 @@ d3.gl = function() {
         }else{
             for(var i in model.children){
                 child = model.children[i];
-                transdlateModelVertices(child, translation);
+                translateModelVertices(child, translation);
             }
         } 
     }
     function getBoundingBox(model) {
-        if (!model || !model.geometry) return null;
+				if (!model) return null;
+				if (!model.geometry) {
+						var bbox = new THREE.Box3();
+						model.children.forEach(function(child) {
+								bbox.union(getBoundingBox(child));
+						});
+						return bbox;
+				}
         model.geometry.computeBoundingBox();
         return model.geometry.boundingBox;
     }
@@ -1960,7 +1967,9 @@ d3.gl.graph = function() {
         gl.meshes = {};
 
         // Pass in true for orthographic perspective
-        d3gl.init(gl, true);
+				//TODO: make ortho zoom work
+        //d3gl.init(gl, true);
+				d3gl.init(gl);
 
         // Add canvas to DOM
         gl.element.appendChild(gl.renderer.domElement);
@@ -1995,7 +2004,9 @@ d3.gl.graph = function() {
 
 		graph.points = function() {
 				/** User-defined callback functions **/
-				var fnData, fnScale, fnColor;
+				var fnScale, fnColor;
+				var fnData = function(d) { return d; };
+				var fnVertex = function(d) { return d; };
 
 				var update = true;
 
@@ -2011,17 +2022,19 @@ d3.gl.graph = function() {
 						// Toggle off update
 						update = false;
 
-						var vertices, scale, geometry, material, texture, pointcloud;
-						if (!fnData || !(vertices = fnData(gl.datum, gl.index))) {
+						var dataArray, scale, geometry, material, texture, pointcloud;
+						if (!fnData || !(dataArray = fnData(gl.datum, gl.index))) {
 								throw "Please specify point cloud data using pointcloud.data";
 						}
 						scale = fnScale ? fnScale(gl.datum, gl.index) : 1;
 
 						geometry = new THREE.Geometry();
 						geometry.colors = [];
-						vertices.forEach(function(vertex, vIdx) {
+						dataArray.forEach(function(datum, vIdx) {
+								var vertex = fnVertex(datum);
 								geometry.vertices.push(new THREE.Vector3(
 										parseFloat(vertex.x), parseFloat(vertex.y), parseFloat(vertex.z)));
+							  // TODO: following shouldn't use gl.datum it should use datum
 								geometry.colors.push(new THREE.Color(
 										fnColor ? fnColor(gl.datum, gl.index, vIdx) : 0x000000));
 						});
@@ -2074,6 +2087,12 @@ d3.gl.graph = function() {
 						else fnData = function() { return val; };
 						return points;
 				};
+				points.vertex = function(val) {
+						if (arguments.length===0) return fnVertex;
+						if (typeof val === "function") fnVertex = val;
+						else fnVertex = function() { return val; };
+						return points;
+				};
 				points.color = function(val) {
 						if (arguments.length===0) return fnColor;
 						if (typeof val === "function") fnColor = val;
@@ -2083,6 +2102,71 @@ d3.gl.graph = function() {
 
 				overlay3D.push(points);
 				return points;
+		};
+
+		graph.lines = function() {
+				var linesUpdate = true;
+        var fnData = function(d) { return d; };
+        var fnVertices = function(d) { return d; };
+
+				var lines = function(gl) {
+						if (!linesUpdate) return;
+						linesUpdate = false;
+
+						// Empty the outdated pointcloud mesh
+						gl.meshes['lines'] = [];
+
+						var linesObject = new THREE.Object3D();
+						var dataArray = fnData(gl.datum, gl.index);
+						$.each(dataArray, function(index, datum) {
+								var vertices = fnVertices(datum, index);
+								var geometry, material, line;
+
+								geometry = new THREE.Geometry();
+								for (var i = 0; i < vertices.length; i += 3) {
+										var vertex = new THREE.Vector3(
+											parseFloat(vertices[i]),
+											parseFloat(vertices[i+1]),
+											parseFloat(vertices[i+2])
+										);
+										geometry.vertices.push(vertex);
+								}
+
+								// TODO use fnColor, fnThickness
+								material = new THREE.LineBasicMaterial({
+										'color': new THREE.Color(0x000000),
+										'opacity': 1,
+										'linewidth': 3
+								}); 
+								
+								// Create line and adjust model to fit viewport
+								line = new THREE.Line(geometry, material);
+								linesObject.add(line);
+						});
+						d3gl.scaleModel(linesObject, 1);
+						d3gl.centerModel(linesObject);
+
+						// Add line
+						gl.scene.add(linesObject);
+						gl.meshes['lines'].push(linesObject);
+				};
+
+				lines.data = function(val) {
+						if (arguments.length===0) return fnData;
+						if (typeof val === "function") fnData = val;
+						else fnData = function() { return val; };
+						return lines;
+				};
+				lines.vertices = function(val) {
+						if (arguments.length===0) return fnVertices;
+						if (typeof val === "function") fnVertices = val;
+						else fnVertices = function() { return val; };
+						return lines;
+				};
+
+
+				overlay3D.push(lines);
+				return lines;
 		};
 
     /** AXIS **/
