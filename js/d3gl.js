@@ -2000,8 +2000,8 @@ d3.gl.graph = function() {
 
         // Pass in true for orthographic perspective
 				//TODO: make ortho zoom work
-        //d3gl.init(gl, true);
-				d3gl.init(gl);
+        d3gl.init(gl, true);
+				//d3gl.init(gl);
 
         // Add canvas to DOM
         gl.element.appendChild(gl.renderer.domElement);

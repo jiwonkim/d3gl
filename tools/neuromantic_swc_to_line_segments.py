@@ -30,10 +30,16 @@ def readNeuromanticSWC(filename):
 		if line[0] == '#':
 			continue
 		
-		elems = [float(x) for x in line.split(' ')]
-		if elems[0] == '':
-			elems.pop(0)
-
+		data = line.split(' ')
+		elems = []	
+		for node in data:
+			try:
+				val = float(node)
+				elems.append(val)
+			except:
+				continue	
+		
+		#elems = [float(x) for x in elems]
 		celltype = elems[1]
 		x = elems[2]
 		y = elems[3]
