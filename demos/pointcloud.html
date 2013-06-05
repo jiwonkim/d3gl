@@ -23,21 +23,23 @@ $(function(){
         //var scaleColor = d3.scale.linear()
         //    .domain([0, 1237000]).range([0xff0000, 0xff0000]);
 
-        var pointcloud = d3.gl.pointcloud()
-            .width(800).height(500)
+				var graph = d3.gl.graph()
+					.width(800).height(500);
+
+				var pointcloud = graph.points()
             .data(vertices)
             .color(function(d, i, vIdx) {
                 if (vIdx > 50000) return 0xff0000;
                 else return 0x00ffff;
                 //return scaleColor(vIdx);
             });
-        
+
         var scales = {
             "x": d3.scale.linear().domain([-40, 40]),
             "y": d3.scale.linear().domain([-40, 40]),
             "z": d3.scale.linear().domain([0, 100])
         };
-        var axis = pointcloud.axis()
+        var axis = graph.axis()
             .data(["x", "y", "z"])
             .scale(function(d) { return scales[d]; })
             .orient(function(d) { return d; })
@@ -60,7 +62,7 @@ $(function(){
 
         d3.select("body").selectAll("span")
             .data(["pointcloud-house"]).enter().append("span")
-            .call(pointcloud);
+            .call(graph);
     });
     
 });

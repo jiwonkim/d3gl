@@ -1942,38 +1942,32 @@ d3.gl.model = function() {
     return model;
 };
 
-d3.gl.pointcloud = function() {
+d3.gl.graph = function() {
     var d3gl = d3.gl();
-    
-    /** User-defined callback functions **/
-    var fnData, fnScale, fnColor;
+		var overlay3D = [];
 
-    var overlay3D = [];
-    var shaders = {};
-
-    var pointcloud = function(g) {
-        g.each(pointcloudInit);
-    };
-
-    function pointcloudInit(d, i) {
+		var graph = function(g) {
+				g.each(graphInit);
+		};
+		
+		function graphInit(d, i) {
         // gl stores all the rendering state for each individual model.
         // remember that a call to d3.gl.model() may result in multiple model (one per datum)
         var gl = {};
         gl.element = this; // the D3 primitive: one dom element, one datum
         gl.datum = d;
         gl.index = i;
-        gl.meshes = {'pointcloud': []};
+        gl.meshes = {};
 
         // Pass in true for orthographic perspective
         d3gl.init(gl, true);
-        initPointcloud(gl);
 
         // Add canvas to DOM
         gl.element.appendChild(gl.renderer.domElement);
-        pointcloudRender(gl);
-    }
+				graphRender(gl);
+		}
 
-    function pointcloudRender(gl) {
+		function graphRender(gl) {
         d3gl.update(gl);
         d3gl.fireEvent("update", null);
   
@@ -1988,118 +1982,134 @@ d3.gl.pointcloud = function() {
             }); 
         });
         gl.renderer.render(gl.scene, gl.camera);
-        requestAnimationFrame(function() { pointcloudRender(gl);});
-    }
-
-    function initPointcloud(gl) {
-        var vertices, scale, geometry, material, texture, pointcloud;
-        if (!fnData || !(vertices = fnData(gl.datum, gl.index))) {
-            throw "Please specify point cloud data using pointcloud.data";
-        }
-        scale = fnScale ? fnScale(gl.datum, gl.index) : 1;
-
-        geometry = new THREE.Geometry();
-        geometry.colors = [];
-        vertices.forEach(function(vertex, vIdx) {
-            geometry.vertices.push(new THREE.Vector3(
-                parseFloat(vertex.x), parseFloat(vertex.y), parseFloat(vertex.z)));
-            geometry.colors.push(new THREE.Color(
-                fnColor ? fnColor(gl.datum, gl.index, vIdx) : 0x000000));
-        });
-        texture = new THREE.Texture(generatePointTexture());
-        texture.needsUpdate = true;
-        material = new THREE.ParticleBasicMaterial({
-            'vertexColors': true,
-            'size': 0.01,
-            'map': texture,
-            'depthTest': false,
-            'transparent': true,
-            'opacity': 0.7
-        });
-
-        pointcloud = new THREE.ParticleSystem(geometry, material);
-        gl.meshes['pointcloud'].push(pointcloud);
-
-        d3gl.scaleModel(pointcloud, scale);
-        d3gl.centerPointcloud(pointcloud);
-        gl.scene.add(pointcloud);
-    }
-    // draw a circle in the center of the canvas
-    function generatePointTexture() {
-        // create canvas
-        var size = 128;
-        var canvas = document.createElement( 'canvas' );
-        canvas.width = size;
-        canvas.height = size;
-        
-        // draw circle
-        var context = canvas.getContext( '2d' );
-        var radius = size / 2;
-
-        context.beginPath();
-        context.arc(radius, radius, radius, 0, 2*Math.PI, false);
-        context.fillStyle = "#fff";
-        context.fill();
-
-        return canvas;
-    }
-
-    pointcloud.width = function(val) {
+        requestAnimationFrame(function() { graphRender(gl);});
+		}
+    graph.width = function(val) {
         var ret = d3gl.width(val);
-        return ret ? ret : pointcloud;
+        return ret ? ret : graph;
     };
-    pointcloud.height = function(val) {
+    graph.height = function(val) {
         var ret = d3gl.height(val);
-        return ret ? ret : pointcloud;
+        return ret ? ret : graph;
     };
-    pointcloud.scale = function(val) {
-        if (arguments.length===0) return fnScale;
-        if (typeof val === "function") fnScale = val;
-        else fnScale = function() { return val; };
-        return pointcloud;
-    };
-    pointcloud.data = function(val) {
-        if (arguments.length===0) return fnData;
-        if (typeof val === "function") fnData = val;
-        else fnData = function() { return val; };
-        return pointcloud;
-    };
-    pointcloud.color = function(val) {
-        if (arguments.length===0) return fnColor;
-        if (typeof val === "function") fnColor = val;
-        else fnColor = function() { return val; };
-        return pointcloud;
-    };
+
+		graph.points = function() {
+				/** User-defined callback functions **/
+				var fnData, fnScale, fnColor;
+
+				var update = true;
+
+				var points = function(gl) {
+						if (update) initPoints(gl);
+						// TODO: what if user updates colors, etc?
+				};
+
+				function initPoints(gl) {
+						// Empty the outdated pointcloud mesh
+						gl.meshes['points'] = [];
+
+						// Toggle off update
+						update = false;
+
+						var vertices, scale, geometry, material, texture, pointcloud;
+						if (!fnData || !(vertices = fnData(gl.datum, gl.index))) {
+								throw "Please specify point cloud data using pointcloud.data";
+						}
+						scale = fnScale ? fnScale(gl.datum, gl.index) : 1;
+
+						geometry = new THREE.Geometry();
+						geometry.colors = [];
+						vertices.forEach(function(vertex, vIdx) {
+								geometry.vertices.push(new THREE.Vector3(
+										parseFloat(vertex.x), parseFloat(vertex.y), parseFloat(vertex.z)));
+								geometry.colors.push(new THREE.Color(
+										fnColor ? fnColor(gl.datum, gl.index, vIdx) : 0x000000));
+						});
+						texture = new THREE.Texture(generatePointTexture());
+						texture.needsUpdate = true;
+						material = new THREE.ParticleBasicMaterial({
+								'vertexColors': true,
+								'size': 0.01,
+								'map': texture,
+								'depthTest': false,
+								'transparent': true,
+								'opacity': 0.7
+						});
+
+						pointcloud = new THREE.ParticleSystem(geometry, material);
+						gl.meshes['points'].push(pointcloud);
+
+						d3gl.scaleModel(pointcloud, scale);
+						d3gl.centerPointcloud(pointcloud);
+						gl.scene.add(pointcloud);
+				}
+				function generatePointTexture() {
+						// create canvas
+						var size = 128;
+						var canvas = document.createElement( 'canvas' );
+						canvas.width = size;
+						canvas.height = size;
+						
+						// draw circle
+						var context = canvas.getContext( '2d' );
+						var radius = size / 2;
+
+						context.beginPath();
+						context.arc(radius, radius, radius, 0, 2*Math.PI, false);
+						context.fillStyle = "#fff";
+						context.fill();
+
+						return canvas;
+				}
+
+				points.scale = function(val) {
+						if (arguments.length===0) return fnScale;
+						if (typeof val === "function") fnScale = val;
+						else fnScale = function() { return val; };
+						return points;
+				};
+				points.data = function(val) {
+						if (arguments.length===0) return fnData;
+						if (typeof val === "function") fnData = val;
+						else fnData = function() { return val; };
+						return points;
+				};
+				points.color = function(val) {
+						if (arguments.length===0) return fnColor;
+						if (typeof val === "function") fnColor = val;
+						else fnColor = function() { return val; };
+						return points;
+				};
+
+				overlay3D.push(points);
+				return points;
+		};
 
     /** AXIS **/
     //TODO: make ticks and label separate closures under axis
     // make tick & label size in terms of pointcloud dimensions
     // (i.e. scale it with gl.scale)
-    pointcloud.axis = function() {
-        var update = true;
+    graph.axis = function() {
+        var axisUpdate = true;
         var fnData = function(d) { return d; };
         var fnScale, fnOrient, fnThickness;
-        /*
-        var fnTicks, fnTickFormat, fnTickSize,
-            fnTickFont, fnTickResolution, fnTickColor;
-            */
-        var fnLabel, fnLabelSize, fnLabelFont, fnLabelResolution;
         var ticksRenderer, labelRenderer;
 
         // Called once per frame
         var axis = function(gl) {
-            if (!update) return;
+            if (!axisUpdate) return;
+						axisUpdate = false;
 
             // Newly updating. Remove previous.
-            if (gl.meshes.axis) {
-                gl.meshes.axis.forEach(function(m) {
+            if (gl.meshes['axis']) {
+                gl.meshes['axis'].forEach(function(m) {
                     gl.scene.remove(m);
                 });
             } else {
-                gl.meshes.axis = [];
+                gl.meshes['axis'] = [];
             }
 
-            // Num data elements = num axes for pointcloud
+            // Num data elements = num axes for graph
             var data = fnData(gl.datum);
 
             // For each axis, create and add meshes to scene
@@ -2119,8 +2129,6 @@ d3.gl.pointcloud = function() {
                 /* Create a label for the axis */
                 if(labelRenderer) labelRenderer(gl, datum);
             });
-
-            update = false;
         };
         function drawLine(gl, datum) {
             var orient, scale, p0, p1;
@@ -2146,7 +2154,7 @@ d3.gl.pointcloud = function() {
             // Create and add line
             line = new THREE.Line(lineGeometry, lineMaterial);
             gl.scene.add(line);
-            gl.meshes.axis.push(line);
+            gl.meshes['axis'].push(line);
         }
         function getPointOnAxis(gl, orient, p) {
             var v = new THREE.Vector3(
@@ -2252,7 +2260,7 @@ d3.gl.pointcloud = function() {
                 });
 
                 gl.scene.add(tickMarks);
-                gl.meshes.axis.push(tickMarks);
+                gl.meshes['axis'].push(tickMarks);
             };
 
             ticks.count = function(val) {
@@ -2297,7 +2305,7 @@ d3.gl.pointcloud = function() {
         };
 
         axis.label = function() {
-            var fnText, fnSize, fnResolution, fnFont, fnColor;
+            var fnText, fnSize, fnResolution, fnFont, fnColor, fnLabel;
 
             var label = function(gl, datum) {
                 var orient, scale, p0, p1;
@@ -2329,7 +2337,7 @@ d3.gl.pointcloud = function() {
                     })
                 );
                 gl.scene.add(labelMesh);
-                gl.meshes.axis.push(labelMesh);
+                gl.meshes['axis'].push(labelMesh);
             };
             label.text = function(val) {
                 if (arguments.length===0) return fnText;
@@ -2376,5 +2384,5 @@ d3.gl.pointcloud = function() {
         return axis;
     };
 
-    return pointcloud;
+		return graph;
 };
