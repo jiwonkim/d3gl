@@ -71,35 +71,38 @@ d3.gl = function() {
         d3gl.rotationMatrix = new THREE.Matrix4().makeRotationFromEuler({
           x:latlon[0]*Math.PI/180, 
           y:latlon[1]*Math.PI/180, 
-          z:0
+          z:latlon.length==3 ? latlon[2]*Math.PI/180 : 0
         });
     }
     d3gl.orient = function(orientation) {
         switch(orientation) {
           //TODO: Find x orientation!!
-          case "x": d3gl.rotate([0, 45]); break;
+          case "x": d3gl.rotate([180, 180, 270]); break;
           case "-x": d3gl.rotate([180, 0]); break;
           case "y": d3gl.rotate([270, 0]); break;
           case "-y": d3gl.rotate([90, 90]); break;
           case "z": d3gl.rotate([180, 90]); break;
+          case "-z": d3gl.rotate([180, 180, 90]); break;
           default: break;
         }
         console.log(orientation + ": ");
-        console.log(d3gl.rotationMatrix);
     }
 
     /** THREE.js model scaling and centering related **/
     d3gl.scaleModel = function(model, multiplier, gl) {
+        var updateMatrix = gl.scale || model.geometry;
         if (!gl.scale) {
             var bbox = getBoundingBox(model);
             var w = bbox.max.x - bbox.min.x;
             var h = bbox.max.y - bbox.min.y;
             var depth = bbox.max.z - bbox.min.z;
-            gl.scale = 1.5/Math.max(w, Math.max(h, depth));
+            gl.scale = 2/Math.max(w, Math.max(h, depth));
             gl.scale *= multiplier;
         }
-        model.scale.x = model.scale.y = model.scale.z = gl.scale;
-        model.updateMatrix();
+        if (updateMatrix) {
+            model.scale.x = model.scale.y = model.scale.z = gl.scale;
+            model.updateMatrix();
+        }
     };
     d3gl.centerModel = function(model, gl) {
         if (!gl.centerTranslation) {
@@ -199,9 +202,9 @@ d3.gl = function() {
     // user-defined callback function for when mouse events are fired
     var mouseEventCallback;
     // constants
-    var MIN_ZOOM = 0.5;
-    var MAX_ZOOM = 4;
-    var MOUSE_SENSITIVITY = 0.6; // degrees rotated per pixel
+    var MIN_ZOOM = 0.01;
+    var MAX_ZOOM = 10;
+    var MOUSE_SENSITIVITY = 0.3; // degrees rotated per pixel
     var ZOOM_SENSITIVITY = 0.1; // (0 = no effect, 1 = infinite)
     var VIEW_ANGLE = 30,
         NEAR = 0.01,
@@ -294,7 +297,6 @@ d3.gl = function() {
     };
     function dragUpdate(evt) {
 				var inverseRotationMatrix = new THREE.Matrix4().getInverse(d3gl.rotationMatrix);
-
 				// Conver camera coordinates x, y, z axes to object coordinate axes
 				var x = new THREE.Vector3(1, 0, 0).applyMatrix4(inverseRotationMatrix);
 				var y = new THREE.Vector3(0, 1, 0).applyMatrix4(inverseRotationMatrix);
@@ -1842,7 +1844,6 @@ d3.gl.model = function() {
         if (!adjustedMatrix) {
 					d3gl.centerModel(gl.model, gl);
 					gl.model.adjustedMatrix = new THREE.Matrix4().copy(gl.model.matrix);
-					console.log(gl.model.adjustedMatrix);
 				} else {
 					gl.model.adjustedMatrix = new THREE.Matrix4().copy(adjustedMatrix);
 				}
@@ -2077,7 +2078,7 @@ d3.gl.graph = function() {
 
         d3gl.scaleModel(gl.graph, 1, gl);
         d3gl.centerModelByWeight(gl.graph, gl);
-        gl.graph.adjustedMatrix = new THREE.Matrix4().copy(d3gl.rotationMatrix);
+        gl.graph.adjustedMatrix = new THREE.Matrix4().copy(gl.graph.matrix);
 
         gl.graph.children.forEach(function(child) {
             d3gl.scaleModel(child, 1, gl);
