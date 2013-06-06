@@ -76,13 +76,12 @@ d3.gl = function() {
     }
     d3gl.orient = function(orientation) {
         switch(orientation) {
-          //TODO: Find x orientation!!
-          case "x": d3gl.rotate([180, 180, 270]); break;
-          case "-x": d3gl.rotate([180, 0]); break;
-          case "y": d3gl.rotate([270, 0]); break;
-          case "-y": d3gl.rotate([90, 90]); break;
-          case "z": d3gl.rotate([180, 90]); break;
-          case "-z": d3gl.rotate([180, 180, 90]); break;
+          case "x": d3gl.rotate([90, 180, 90]); break;
+          case "-x": d3gl.rotate([90, 90, 270]); break;
+          case "y": d3gl.rotate([90, 90]); break;
+          case "-y": d3gl.rotate([270, 0]); break;
+          case "z": d3gl.rotate([0, 0]); break;
+          case "-z": d3gl.rotate([180, 0, 270]); break;
           default: break;
         }
         console.log(orientation + ": ");
