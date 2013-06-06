@@ -11,6 +11,7 @@ d3.gl = function() {
     }
 
     /** PUBLIC **/
+    d3gl.orthographicCamera = false;
     d3gl.width = function(val){
         if(!arguments.length) return width;
         width = val;
@@ -19,18 +20,23 @@ d3.gl = function() {
         if(!arguments.length) return height;
         height = val;
     }
-
+    d3gl.zoomUpdated = false;
     d3gl.zoom = function(val) {
-        if (arguments.length === 0) return zoom; 
-        else zoom = val;
+        if (arguments.length === 0){
+					return zoom; 
+        } else {
+          zoom = val;
+        }
     };
     d3gl.rotation = {"lat":0,"lon":0};
+		d3gl.rotationMatrix = new THREE.Matrix4();
     d3gl.mouseEventCallback = function(val) {
         if (arguments.length === 0) return mouseEventCallback;
         else mouseEventCallback = val;
     }
     d3gl.init = function(gl, ortho) {
-        initGL(gl, ortho);
+        if (ortho) d3gl.orthographicCamera = true;
+        initGL(gl);
         initControls(gl, gl.renderer.domElement);
         initStyle(gl.renderer.domElement); // <canvas> style
     };
@@ -49,7 +55,15 @@ d3.gl = function() {
     };
     // To be called on each render loop
     d3gl.update = function(gl) {
-        gl.camera.position.z = 1 + zoom;
+        if (d3gl.orthographicCamera) {
+          gl.camera.left = -zoom*width/height;
+          gl.camera.right = zoom*width/height;
+          gl.camera.top = -zoom;
+          gl.camera.bottom = zoom;
+          gl.camera.updateProjectionMatrix();
+        } else {
+          gl.camera.position.z = 1 + zoom;
+        }
     }
 
     /** THREE.js model scaling and centering related **/
@@ -73,14 +87,14 @@ d3.gl = function() {
         model.updateMatrix();
     };
     d3gl.centerModelByWeight = function(model) {
-				var centerPoint = new THREE.Vector3();
-				addVertices(model, centerPoint);
-				centerPoint.multiplyScalar(1/countVertices(model));
-				gl.centerTranslation = new THREE.Vector3().subVectors(
-					model.position, centerPoint);
+        var centerPoint = new THREE.Vector3();
+        addVertices(model, centerPoint);
+        centerPoint.multiplyScalar(1/countVertices(model));
+        gl.centerTranslation = new THREE.Vector3().subVectors(
+          model.position, centerPoint);
         translateModelVertices(model, gl.centerTranslation);
         model.updateMatrix();
-			/*
+      /*
         var count = pointcloud.geometry.vertices.length;
         var centerPoint = new THREE.Vector3();
         pointcloud.geometry.vertices.forEach(function(vertex) {
@@ -92,7 +106,7 @@ d3.gl = function() {
         
         translateModelVertices(pointcloud, gl.centerTranslation);
         pointcloud.updateMatrix();
-				*/
+        */
     };
     function translateModelVertices(model, translation) {
         if(model.geometry){
@@ -106,45 +120,45 @@ d3.gl = function() {
             }
         } 
     }
-		function countVertices(model) {
-				if (!model) return null;
-				if (!model.geometry) {
-						var count = 0; 
-						model.children.forEach(function(child) {
-								count += countVertices(child);
-						});
-						return count;
-				}
-				return model.geometry.vertices.length;
-		}
-		function addVertices(model, sum) {
-				if (!model) return null;
-				if (!model.geometry) {
-						model.children.forEach(function(child) {
-								addVertices(child, sum);
-						});
-				} else {
-						model.geometry.vertices.forEach(function(vertex) {
-								sum.add(vertex);
-						});
-				}
-		}
+    function countVertices(model) {
+        if (!model) return null;
+        if (!model.geometry) {
+            var count = 0; 
+            model.children.forEach(function(child) {
+                count += countVertices(child);
+            });
+            return count;
+        }
+        return model.geometry.vertices.length;
+    }
+    function addVertices(model, sum) {
+        if (!model) return null;
+        if (!model.geometry) {
+            model.children.forEach(function(child) {
+                addVertices(child, sum);
+            });
+        } else {
+            model.geometry.vertices.forEach(function(vertex) {
+                sum.add(vertex);
+            });
+        }
+    }
     function getBoundingBox(model) {
-				if (!model) return null;
-				if (!model.geometry) {
-						var bbox = new THREE.Box3();
-						model.children.forEach(function(child) {
-								bbox.union(getBoundingBox(child));
-						});
-						return bbox;
-				}
+        if (!model) return null;
+        if (!model.geometry) {
+            var bbox = new THREE.Box3();
+            model.children.forEach(function(child) {
+                bbox.union(getBoundingBox(child));
+            });
+            return bbox;
+        }
         model.geometry.computeBoundingBox();
         return model.geometry.boundingBox;
     }
 
     /** PRIVATE **/
     // variables
-    var zoom = 2.0;
+    var zoom;
     var dragStart = null;
     var eventHandlers = {
         // mouse handlers
@@ -164,7 +178,7 @@ d3.gl = function() {
     // constants
     var MIN_ZOOM = 0.5;
     var MAX_ZOOM = 4;
-    var MOUSE_SENSITIVITY = 0.15; // degrees rotated per pixel
+    var MOUSE_SENSITIVITY = 0.6; // degrees rotated per pixel
     var ZOOM_SENSITIVITY = 0.1; // (0 = no effect, 1 = infinite)
     var VIEW_ANGLE = 45,
         NEAR = 0.01,
@@ -228,22 +242,24 @@ d3.gl = function() {
             evt.preventDefault();
         });
     }
-    function initGL(gl, ortho) {
+    function initGL(gl) {
         var scene, camera, renderer;
 
         // scene
         scene = new THREE.Scene();
 
         // camera
-        if (ortho) {
-          camera = new THREE.OrthographicCamera(
-              -width/height, width/height, -1, 1);
+        if (d3gl.orthographicCamera) {
+					d3gl.zoom(1);
+          camera = new THREE.OrthographicCamera();
+          MOUSE_SENSITIVITY = 1;
         } else {
           camera = new THREE.PerspectiveCamera(
               VIEW_ANGLE, width/height,
               NEAR, FAR);
+					d3gl.zoom(2);
         }
-        camera.position.z = 2;
+				camera.position.z = 2;
         scene.add(camera);
 
         // start the renderer
@@ -264,9 +280,29 @@ d3.gl = function() {
         zoom *= val;
         zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
     };
-    function dragUpdate (evt) {
-        d3gl.rotation.lon -= (evt.pageX - dragStart[0])*MOUSE_SENSITIVITY*zoom;
-        d3gl.rotation.lat += (evt.pageY - dragStart[1])*MOUSE_SENSITIVITY*zoom;
+    function dragUpdate(evt) {
+				var inverseRotationMatrix = new THREE.Matrix4().getInverse(d3gl.rotationMatrix);
+
+				// Conver camera coordinates x, y, z axes to object coordinate axes
+				var x = new THREE.Vector3(1, 0, 0).applyMatrix4(inverseRotationMatrix);
+				var y = new THREE.Vector3(0, 1, 0).applyMatrix4(inverseRotationMatrix);
+
+				// diff y: rotate around the x-axis-turned-object-coord axis
+				var diffY = (evt.pageY - dragStart[1])*MOUSE_SENSITIVITY*(Math.PI/180)*zoom;
+				var rotateY = new THREE.Matrix4().makeRotationAxis(x, diffY);
+				d3gl.rotationMatrix.multiply(rotateY);
+
+				// diff x: rotate around the y-axis-turned-object-coord axis
+				var diffX = (evt.pageX - dragStart[0])*MOUSE_SENSITIVITY*(Math.PI/180)*zoom;
+				var rotateX = new THREE.Matrix4().makeRotationAxis(y, diffX);
+				d3gl.rotationMatrix.multiply(rotateX);
+
+				d3gl.rotation.lon -= (evt.pageX - dragStart[0])*MOUSE_SENSITIVITY*zoom;
+				d3gl.rotation.lat += (evt.pageY - dragStart[1])*MOUSE_SENSITIVITY*zoom;
+				d3gl.rotation.lon %= 360;
+				d3gl.rotation.lat %= 360;
+
+				console.log(d3gl.rotationMatrix);
     };
     function fireMouseEvent (name, gl, evt) {
         var handlers = eventHandlers[name];
@@ -1633,7 +1669,6 @@ d3.gl.model = function() {
     var d3gl = d3.gl();
 
     // *** PRIVATE
-    var zoom = 2.0, rotation = {"lat":0,"lon":0};
     var shaders = {}; // hardcoded strings, see bottom
     var fnMesh, fnTex, fnColor, fnMaterial, fnScale;
 
@@ -1676,14 +1711,14 @@ d3.gl.model = function() {
             gl.obj = {};
             gl.obj.geometry = g;
             gl.obj.materials = m;
-            //gl.obj.bbox = d3gl.getBoundingBox(gl.obj.geometry);
             gl.obj.scale = fnScale ? fnScale(d) : 1.;
 
             // Init WebGL elements for this model
             d3gl.init(gl);
 
             initLights(gl); // set up scene, transform, etc
-            initModel(gl, true); // pre-process model for display and add to scene
+
+            initModel(gl); // pre-process model for display and add to scene
             gl.element.appendChild(gl.renderer.domElement);
 
             // Register update function
@@ -1701,9 +1736,15 @@ d3.gl.model = function() {
         d3gl.fireEvent("update", gl);
 
         // appropriately rotate & zoom
+				/*
         gl.model.rotation.x = d3gl.rotation.lat*Math.PI/180; 
         gl.model.rotation.y = -d3gl.rotation.lon*Math.PI/180;
         gl.model.updateMatrix();
+				*/
+				gl.model.matrix.copy(d3gl.rotationMatrix);
+				gl.model.matrix.multiply(gl.model.adjustedMatrix);
+				gl.model.matrixWorldNeedsUpdate = true;
+
 
         // render scene
         gl.renderer.render(gl.scene, gl.camera);
@@ -1759,7 +1800,7 @@ d3.gl.model = function() {
 
         // Remove old model and add newly initialized one.
         gl.scene.remove(gl.model);
-        initModel(gl, false); // Don't translate vertices again
+        initModel(gl, gl.model.adjustedMatrix); // Don't translate vertices again
     }
 
     // *** INIT FUNCTIONS
@@ -1778,7 +1819,8 @@ d3.gl.model = function() {
         gl.scene.add(pointLight);
     }
 
-    function initModel(gl, adjustCenter) {
+    function initModel(gl, adjustedMatrix) {
+				console.log("Initializing model!");
         gl.model = new THREE.Mesh(gl.obj.geometry,
             new THREE.MeshFaceMaterial(gl.obj.materials));
         gl.model.matrixAutoUpdate = false;
@@ -1787,7 +1829,13 @@ d3.gl.model = function() {
         d3gl.scaleModel(gl.model, fnScale ? fnScale(d) : 1.);
 
         // Translate to center model in viewport
-        if (adjustCenter) d3gl.centerModel(gl.model);
+        if (!adjustedMatrix) {
+					d3gl.centerModel(gl.model);
+					gl.model.adjustedMatrix = new THREE.Matrix4().copy(gl.model.matrix);
+					console.log(gl.model.adjustedMatrix);
+				} else {
+					gl.model.adjustedMatrix = new THREE.Matrix4().copy(adjustedMatrix);
+				}
         
         gl.scene.add(gl.model); 
     }
@@ -1855,9 +1903,9 @@ d3.gl.model = function() {
         return model;
     };
     model.zoom = function(z){
-        if(!arguments.length) return zoom;
+        if(!arguments.length) return d3gl.zoom();
         if(!z || z<0) throw "Invalid zoom()";
-        zoom = z;
+        d3gl.zoom(z);
         return model;
     };
     /** Functions to swap materials for the model. The
@@ -1983,32 +2031,36 @@ d3.gl.model = function() {
 
 d3.gl.graph = function() {
     var d3gl = d3.gl();
-		var overlay3D = [];
+    var overlay3D = [];
 
-		var graph = function(g) {
-				g.each(graphInit);
-		};
-		
-		function graphInit(d, i) {
+    var graph = function(g) {
+        g.each(graphInit);
+    };
+    
+    function graphInit(d, i) {
         // gl stores all the rendering state for each individual model.
         // remember that a call to d3.gl.model() may result in multiple model (one per datum)
         var gl = {};
         gl.element = this; // the D3 primitive: one dom element, one datum
         gl.datum = d;
         gl.index = i;
+        gl.update = {
+          'points': true,
+          'lines': true,
+          'axis': true
+        };
         gl.meshes = {};
 
         // Pass in true for orthographic perspective
-				//TODO: make ortho zoom work
+        //TODO: make ortho zoom work
         d3gl.init(gl, true);
-				//d3gl.init(gl);
 
         // Add canvas to DOM
         gl.element.appendChild(gl.renderer.domElement);
-				graphRender(gl);
-		}
+        graphRender(gl);
+    }
 
-		function graphRender(gl) {
+    function graphRender(gl) {
         d3gl.update(gl);
         d3gl.fireEvent("update", null);
   
@@ -2018,13 +2070,18 @@ d3.gl.graph = function() {
 
         Object.keys(gl.meshes).forEach(function(key) {
             gl.meshes[key].forEach(function(m) {
+
+								//m.matrix.copy(d3gl.rotationMatrix);
+								//m.matrix.multiply(m.adjustedMatrix);
+								//m.rotation.setEulerFromRotationMatrix(
+								//new THREE.Matrix4().copy(d3gl.rotationMatrix))
                 m.rotation.x = -d3gl.rotation.lat*Math.PI/180;
                 m.rotation.y = -d3gl.rotation.lon*Math.PI/180;
             }); 
         });
         gl.renderer.render(gl.scene, gl.camera);
         requestAnimationFrame(function() { graphRender(gl);});
-		}
+    }
     graph.width = function(val) {
         var ret = d3gl.width(val);
         return ret ? ret : graph;
@@ -2033,192 +2090,202 @@ d3.gl.graph = function() {
         var ret = d3gl.height(val);
         return ret ? ret : graph;
     };
+    graph.zoom = function(z){
+        if(!arguments.length) return d3gl.zoom();
+        if(!z || z<0) throw "Invalid zoom()";
+        d3gl.zoom(z);
+        return graph;
+    }
 
-		graph.points = function() {
-				/** User-defined callback functions **/
-				var fnScale, fnColor;
-				var fnData = function(d) { return d; };
-				var fnVertex = function(d) { return d; };
 
-				var update = true;
+    graph.points = function() {
+        /** User-defined callback functions **/
+        var fnScale, fnColor;
+        var fnData = function(d) { return d; };
+        var fnVertex = function(d) { return d; };
 
-				var points = function(gl) {
-						if (update) initPoints(gl);
-						// TODO: what if user updates colors, etc?
-				};
+        var update = true;
 
-				function initPoints(gl) {
-						// Empty the outdated pointcloud mesh
-						gl.meshes['points'] = [];
+        var points = function(gl) {
+            if (gl.update['points']) {
+              gl.update['points'] = false;
+              initPoints(gl);
+            }
+            // TODO: what if user updates colors, etc?
+        };
 
-						// Toggle off update
-						update = false;
+        function initPoints(gl) {
+            // Empty the outdated pointcloud mesh
+            gl.meshes['points'] = [];
 
-						var dataArray, scale, geometry, material, texture, pointcloud;
-						if (!fnData || !(dataArray = fnData(gl.datum, gl.index))) {
-								throw "Please specify point cloud data using pointcloud.data";
-						}
-						scale = fnScale ? fnScale(gl.datum, gl.index) : 1;
+            // Toggle off update
 
-						geometry = new THREE.Geometry();
-						geometry.colors = [];
-						dataArray.forEach(function(datum, vIdx) {
-								var vertex = fnVertex(datum);
-								geometry.vertices.push(new THREE.Vector3(
-										parseFloat(vertex.x), parseFloat(vertex.y), parseFloat(vertex.z)));
-							  // TODO: following shouldn't use gl.datum it should use datum
-								geometry.colors.push(new THREE.Color(
-										fnColor ? fnColor(gl.datum, gl.index, vIdx) : 0x000000));
-						});
-						texture = new THREE.Texture(generatePointTexture());
-						texture.needsUpdate = true;
-						material = new THREE.ParticleBasicMaterial({
-								'vertexColors': true,
-								'size': 0.01,
-								'map': texture,
-								'depthTest': false,
-								'transparent': true,
-								'opacity': 0.7
-						});
+            var dataArray, scale, geometry, material, texture, pointcloud;
+            if (!fnData || !(dataArray = fnData(gl.datum, gl.index))) {
+                throw "Please specify point cloud data using pointcloud.data";
+            }
+            scale = fnScale ? fnScale(gl.datum, gl.index) : 1;
 
-						pointcloud = new THREE.ParticleSystem(geometry, material);
-						gl.meshes['points'].push(pointcloud);
+            geometry = new THREE.Geometry();
+            geometry.colors = [];
+            dataArray.forEach(function(datum, vIdx) {
+                var vertex = fnVertex(datum);
+                geometry.vertices.push(new THREE.Vector3(
+                    parseFloat(vertex.x), parseFloat(vertex.y), parseFloat(vertex.z)));
+                // TODO: following shouldn't use gl.datum it should use datum
+                geometry.colors.push(new THREE.Color(
+                    fnColor ? fnColor(gl.datum, gl.index, vIdx) : 0x000000));
+            });
+            texture = new THREE.Texture(generatePointTexture());
+            texture.needsUpdate = true;
+            material = new THREE.ParticleBasicMaterial({
+                'vertexColors': true,
+                'size': 0.01,
+                'map': texture,
+                'depthTest': false,
+                'transparent': true,
+                'opacity': 0.7
+            });
 
-						d3gl.scaleModel(pointcloud, scale);
-						d3gl.centerModelByWeight(pointcloud);
-						gl.scene.add(pointcloud);
-				}
-				function generatePointTexture() {
-						// create canvas
-						var size = 128;
-						var canvas = document.createElement( 'canvas' );
-						canvas.width = size;
-						canvas.height = size;
-						
-						// draw circle
-						var context = canvas.getContext( '2d' );
-						var radius = size / 2;
+            pointcloud = new THREE.ParticleSystem(geometry, material);
+            gl.meshes['points'].push(pointcloud);
 
-						context.beginPath();
-						context.arc(radius, radius, radius, 0, 2*Math.PI, false);
-						context.fillStyle = "#fff";
-						context.fill();
+            d3gl.scaleModel(pointcloud, scale);
+            d3gl.centerModelByWeight(pointcloud);
+						pointcloud.adjustedMatrix = new THREE.Matrix4().copy(pointcloud.matrix);
+						console.log("pointcloud's adjusted matrix: ");
+						console.log(pointcloud.adjustedMatrix);
+						console.log(pointcloud.matrix.extractRotation);
+            gl.scene.add(pointcloud);
+        }
+        function generatePointTexture() {
+            // create canvas
+            var size = 128;
+            var canvas = document.createElement( 'canvas' );
+            canvas.width = size;
+            canvas.height = size;
+            
+            // draw circle
+            var context = canvas.getContext( '2d' );
+            var radius = size / 2;
 
-						return canvas;
-				}
+            context.beginPath();
+            context.arc(radius, radius, radius, 0, 2*Math.PI, false);
+            context.fillStyle = "#fff";
+            context.fill();
 
-				points.scale = function(val) {
-						if (arguments.length===0) return fnScale;
-						if (typeof val === "function") fnScale = val;
-						else fnScale = function() { return val; };
-						return points;
-				};
-				points.data = function(val) {
-						if (arguments.length===0) return fnData;
-						if (typeof val === "function") fnData = val;
-						else fnData = function() { return val; };
-						return points;
-				};
-				points.vertex = function(val) {
-						if (arguments.length===0) return fnVertex;
-						if (typeof val === "function") fnVertex = val;
-						else fnVertex = function() { return val; };
-						return points;
-				};
-				points.color = function(val) {
-						if (arguments.length===0) return fnColor;
-						if (typeof val === "function") fnColor = val;
-						else fnColor = function() { return val; };
-						return points;
-				};
+            return canvas;
+        }
 
-				overlay3D.push(points);
-				return points;
-		};
+        points.scale = function(val) {
+            if (arguments.length===0) return fnScale;
+            if (typeof val === "function") fnScale = val;
+            else fnScale = function() { return val; };
+            return points;
+        };
+        points.data = function(val) {
+            if (arguments.length===0) return fnData;
+            if (typeof val === "function") fnData = val;
+            else fnData = function() { return val; };
+            return points;
+        };
+        points.vertex = function(val) {
+            if (arguments.length===0) return fnVertex;
+            if (typeof val === "function") fnVertex = val;
+            else fnVertex = function() { return val; };
+            return points;
+        };
+        points.color = function(val) {
+            if (arguments.length===0) return fnColor;
+            if (typeof val === "function") fnColor = val;
+            else fnColor = function() { return val; };
+            return points;
+        };
 
-		graph.lines = function() {
-				var linesUpdate = true;
+        overlay3D.push(points);
+        return points;
+    };
+
+    graph.lines = function() {
         var fnData = function(d) { return d; };
         var fnVertices = function(d) { return d; };
-				var fnColor, fnThickness;
+        var fnColor, fnThickness;
 
-				var lines = function(gl) {
-						if (!linesUpdate) return;
-						linesUpdate = false;
+        var lines = function(gl) {
+            if (!gl.update['lines']) return;
+            gl.update['lines'] = false;
 
-						// Empty the outdated pointcloud mesh
-						gl.meshes['lines'] = [];
+            // Empty the outdated pointcloud mesh
+            gl.meshes['lines'] = [];
 
-						var linesObject = new THREE.Object3D();
-						var dataArray = fnData(gl.datum, gl.index);
-						$.each(dataArray, function(index, datum) {
-								var vertices = fnVertices(datum, index);
-								var geometry, material, line, color, thickness;
+            var linesObject = new THREE.Object3D();
+            var dataArray = fnData(gl.datum, gl.index);
+            $.each(dataArray, function(index, datum) {
+                var vertices = fnVertices(datum, index);
+                var geometry, material, line, color, thickness;
 
-								geometry = new THREE.Geometry();
-								for (var i = 0; i < vertices.length; i += 3) {
-										var vertex = new THREE.Vector3(
-											parseFloat(vertices[i]),
-											parseFloat(vertices[i+1]),
-											parseFloat(vertices[i+2])
-										);
-										geometry.vertices.push(vertex);
-								}
+                geometry = new THREE.Geometry();
+                for (var i = 0; i < vertices.length; i += 3) {
+                    var vertex = new THREE.Vector3(
+                      parseFloat(vertices[i]),
+                      parseFloat(vertices[i+1]),
+                      parseFloat(vertices[i+2])
+                    );
+                    geometry.vertices.push(vertex);
+                }
 
-								// TODO use fnColor, fnThickness
-								color = fnColor ?  new THREE.Color(fnColor(datum)) :
-									new THREE.Color(0x000000);
-								thickness = fnThickness ? fnThickness(datum) : 2;
-								material = new THREE.LineBasicMaterial({
-										'color': color,
-										'opacity': 1,
-										'linewidth': thickness
-								}); 
-								
-								// Create line and adjust model to fit viewport
-								line = new THREE.Line(geometry, material);
-								linesObject.add(line);
-						});
-						d3gl.scaleModel(linesObject, 1);
-						d3gl.centerModelByWeight(linesObject);
+                // TODO use fnColor, fnThickness
+                color = fnColor ?  new THREE.Color(fnColor(datum)) :
+                  new THREE.Color(0x000000);
+                thickness = fnThickness ? fnThickness(datum) : 2;
+                material = new THREE.LineBasicMaterial({
+                    'color': color,
+                    'opacity': 1,
+                    'linewidth': thickness
+                }); 
+                
+                // Create line and adjust model to fit viewport
+                line = new THREE.Line(geometry, material);
+                linesObject.add(line);
+            });
+            d3gl.scaleModel(linesObject, 1);
+            d3gl.centerModelByWeight(linesObject);
+						linesObject.adjustedMatrix = new THREE.Matrix4().copy(
+							linesObject.matrix);
 
-						// Add line
-						gl.scene.add(linesObject);
-						gl.meshes['lines'].push(linesObject);
+            // Add line
+            gl.scene.add(linesObject);
+            gl.meshes['lines'].push(linesObject);
+        };
 
-						// TODO: dragging is really bad with none-globe things...
-						//gl.renderer.sortObjects = true;
-						//gl.renderer.sortElements = true;
-				};
+        lines.data = function(val) {
+            if (arguments.length===0) return fnData;
+            if (typeof val === "function") fnData = val;
+            else fnData = function() { return val; };
+            return lines;
+        };
+        lines.vertices = function(val) {
+            if (arguments.length===0) return fnVertices;
+            if (typeof val === "function") fnVertices = val;
+            else fnVertices = function() { return val; };
+            return lines;
+        };
+        lines.color = function(val) {
+            if (arguments.length===0) return fnColor;
+            if (typeof val === "function") fnColor = val;
+            else fnColor = function() { return val; };
+            return lines;
+        };
+        lines.thickness = function(val) {
+            if (arguments.length===0) return fnThickness;
+            if (typeof val === "function") fnThickness = val;
+            else fnThickness = function() { return val; };
+            return lines;
+        };
 
-				lines.data = function(val) {
-						if (arguments.length===0) return fnData;
-						if (typeof val === "function") fnData = val;
-						else fnData = function() { return val; };
-						return lines;
-				};
-				lines.vertices = function(val) {
-						if (arguments.length===0) return fnVertices;
-						if (typeof val === "function") fnVertices = val;
-						else fnVertices = function() { return val; };
-						return lines;
-				};
-				lines.color = function(val) {
-						if (arguments.length===0) return fnColor;
-						if (typeof val === "function") fnColor = val;
-						else fnColor = function() { return val; };
-						return lines;
-				};
-				lines.thickness = function(val) {
-						if (arguments.length===0) return fnThickness;
-						if (typeof val === "function") fnThickness = val;
-						else fnThickness = function() { return val; };
-						return lines;
-				};
-
-				overlay3D.push(lines);
-				return lines;
-		};
+        overlay3D.push(lines);
+        return lines;
+    };
 
     /** AXIS **/
     //TODO: make ticks and label separate closures under axis
@@ -2233,7 +2300,7 @@ d3.gl.graph = function() {
         // Called once per frame
         var axis = function(gl) {
             if (!axisUpdate) return;
-						axisUpdate = false;
+            axisUpdate = false;
 
             // Newly updating. Remove previous.
             if (gl.meshes['axis']) {
@@ -2288,6 +2355,7 @@ d3.gl.graph = function() {
             
             // Create and add line
             line = new THREE.Line(lineGeometry, lineMaterial);
+						line.adjustedMatrix = new THREE.Matrix4().copy(line.matrix);
             gl.scene.add(line);
             gl.meshes['axis'].push(line);
         }
@@ -2367,7 +2435,7 @@ d3.gl.graph = function() {
                 // For each tick, create a tick mesh (a particle system with one
                 // particle) and add it to tickMarks
                 ticks.forEach(function(tick) {
-                    var tickMark, tickTex, tickMesh, tickSize, tickFont, tickColor;
+                    var tickMark, tickTex, mesh, size, font, color;
                     
                     // Format tick if user has specified a formatting function
                     if (fnFormat) tick = fnFormat(tick);
@@ -2376,24 +2444,27 @@ d3.gl.graph = function() {
                     tickMark.vertices = [getPointOnAxis(gl, orient, tick)];
 
                     if (fnResolution) tickResolution = fnResolution(datum);
-                    if (fnFont) tickFont = fnFont(datum);
-                    if (fnColor) tickColor = fnColor(datum);
+                    if (fnFont) font = fnFont(datum);
+                    if (fnColor) color = fnColor(datum);
                     tickTex = new THREE.Texture(generateTickMarkTexture(
-                        tick, tickResolution, tickFont, tickColor));
+                        tick, tickResolution, font, color));
                     tickTex.needsUpdate = true;
 
-                    if (fnSize) tickSize = fnSize(datum);
-                    tickMesh = new THREE.ParticleSystem(tickMark,
+                    if (fnSize) size = fnSize(datum);
+                    mesh = new THREE.ParticleSystem(tickMark,
                         new THREE.ParticleBasicMaterial({
-                            'size': tickSize,
+                            'size': size,
+														'sizeAttenuation': false,
                             'map': tickTex,
                             'transparent': true,
                             'depthTest': false
                         })
                     );
-                    tickMarks.add(tickMesh);
+                    tickMarks.add(mesh);
                 });
 
+								tickMarks.adjustedMatrix = new THREE.Matrix4().copy(
+									tickMarks.matrix);
                 gl.scene.add(tickMarks);
                 gl.meshes['axis'].push(tickMarks);
             };
@@ -2465,12 +2536,14 @@ d3.gl.graph = function() {
 
                 labelMesh = new THREE.ParticleSystem(labelGeometry,
                     new THREE.ParticleBasicMaterial({
-                        'size': fnSize ? fnSize(datum) : 1,
+                        'size': fnSize ? fnSize(datum) : 50,
+												'sizeAttenuation': false,
                         'map': labelTex,
                         'transparent': true,
                         'depthTest': false
                     })
                 );
+								labelMesh.adjustedMatrix = new THREE.Matrix4().copy(labelMesh.matrix);
                 gl.scene.add(labelMesh);
                 gl.meshes['axis'].push(labelMesh);
             };
@@ -2504,12 +2577,12 @@ d3.gl.graph = function() {
                 else fnColor = function() { return val;};
                 return label;
             };
-						label.offset = function(val) {
+            label.offset = function(val) {
                 if (arguments.length===0) return fnOffset;
                 if (typeof val === "function") fnOffset = val;
                 else fnOffset = function() { return val;};
                 return label;
-						};
+            };
 
             labelRenderer = label;
             return label;
@@ -2519,5 +2592,5 @@ d3.gl.graph = function() {
         return axis;
     };
 
-		return graph;
+    return graph;
 };

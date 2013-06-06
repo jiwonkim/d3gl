@@ -20,22 +20,22 @@
 <script type="text/javascript">
 $(function(){
 var meshes = [
-    {mesh: "../models/apple/apple.js", texture: "../img/apple-poison-tex.jpg"},
-    {mesh: "../models/apple/apple.js", texture: "../img/apple-yellow-tex.jpg"},
-    {mesh: "../models/toyplane/toyplane.js", colors: [[1, 0, 0], [0, 1, 0]]},
-    {mesh: "../models/toyplane/toyplane.js", colors: [[0.8, 0.8, 0], [0, 0.8, 0.8]]},
-    {mesh: "../models/toyplane/toyplane.js", colors: [[0.8, 0.4, 0.8], [0.1, 0.1, 0.8]]},
+    //{mesh: "../models/apple/apple.js", texture: "../img/apple-poison-tex.jpg"},
+    //{mesh: "../models/apple/apple.js", texture: "../img/apple-yellow-tex.jpg"},
+		{mesh: "../models/bones/ribs/ribs.js"},
+		{mesh: "../models/bones/hand/hand.js"},
+		{mesh: "../models/bones/skull/skull.js"},
+    //{mesh: "../models/toyplane/toyplane.js", colors: [[1, 0, 0], [0, 1, 0]]},
+    //{mesh: "../models/toyplane/toyplane.js", colors: [[0.8, 0.8, 0], [0, 0.8, 0.8]]},
+    //{mesh: "../models/toyplane/toyplane.js", colors: [[0.8, 0.4, 0.8], [0.1, 0.1, 0.8]]},
 ];
 var model = d3.gl.model()
     .width(400).height(400)
     .mesh(function(datum, index) { return datum.mesh; })
     .color(function(datum, index, materialIndex) {
-        if (datum.colors && datum.colors[materialIndex]) {
-          return datum.colors[materialIndex];
-        } else {
-          return null;
-        }
-    })
+			return [1, 1, 1];
+    });
+		/*
     .texture(function(datum, index, materialIndex) {
         if (datum.texture) {
             return datum.texture;
@@ -43,6 +43,7 @@ var model = d3.gl.model()
             return null;
         }
     });
+		*/
 
 d3.select("body").selectAll("span")
     .data(meshes).enter().append("span")
