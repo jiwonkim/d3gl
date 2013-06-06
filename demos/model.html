@@ -35,7 +35,7 @@ var model = d3.gl.model()
     .color(function(datum, index, materialIndex) {
 			return [1, 1, 1];
     });
-		/*
+    /*
     .texture(function(datum, index, materialIndex) {
         if (datum.texture) {
             return datum.texture;
@@ -43,7 +43,7 @@ var model = d3.gl.model()
             return null;
         }
     });
-		*/
+    */
 
 d3.select("body").selectAll("span")
     .data(meshes).enter().append("span")

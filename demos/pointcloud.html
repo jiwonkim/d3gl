@@ -20,16 +20,14 @@
 <script type="text/javascript">
 $(function(){
     d3.csv("../models/pointcloud-house.csv", function(vertices) {
-        //var scaleColor = d3.scale.linear()
-        //    .domain([0, 1237000]).range([0xff0000, 0xff0000]);
-
 				var graph = d3.gl.graph()
 					.width(800).height(500);
 
 				var pointcloud = graph.points()
             .data(vertices)
-            .color(function(d, i, vIdx) {
-                if (vIdx > 50000) return 0xff0000;
+            .size(5)
+            .color(function(d, i) {
+                if (i > 50000) return 0xff0000;
                 else return 0x00ffff;
                 //return scaleColor(vIdx);
             });
