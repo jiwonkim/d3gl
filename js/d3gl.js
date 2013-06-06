@@ -67,6 +67,12 @@ d3.gl = function() {
     d3gl.rotate = function(latlon) {
         d3gl.rotation.lat = latlon[0];
         d3gl.rotation.lon = latlon[1];
+
+        d3gl.rotationMatrix = new THREE.Matrix4().makeRotationFromEuler({
+          x:latlon[0]*Math.PI/180, 
+          y:latlon[1]*Math.PI/180, 
+          z:0
+        });
     }
     d3gl.orient = function(orientation) {
         switch(orientation) {
@@ -289,14 +295,11 @@ d3.gl = function() {
 				var rotateX = new THREE.Matrix4().makeRotationAxis(y, diffX);
 				d3gl.rotationMatrix.multiply(rotateX);
 
+        // shitty deprecated rotation, soon to be removed...
 				d3gl.rotation.lon -= (evt.pageX - dragStart[0])*MOUSE_SENSITIVITY*zoom;
 				d3gl.rotation.lat += (evt.pageY - dragStart[1])*MOUSE_SENSITIVITY*zoom;
 				d3gl.rotation.lon %= 360;
 				d3gl.rotation.lat %= 360;
-        /*
-        console.log("lat: " + d3gl.rotation.lat);
-        console.log("lon: " + d3gl.rotation.lon);
-        */
     };
     function fireMouseEvent (name, gl, evt) {
         var handlers = eventHandlers[name];
@@ -2053,12 +2056,6 @@ d3.gl.graph = function() {
         gl.element.appendChild(gl.renderer.domElement);
         graphRender(gl);
     }
-    function updateMeshes(meshes) {
-        meshes.forEach(function(m) {
-          m.rotation.x = -d3gl.rotation.lat*Math.PI/180;
-          m.rotation.y = d3gl.rotation.lon*Math.PI/180;
-        });
-    }
     function graphRender(gl) {
         d3gl.update(gl);
         d3gl.fireEvent("update", null);
@@ -2074,22 +2071,14 @@ d3.gl.graph = function() {
             overlayFn(gl);
         });
 
-        if (gl.meshes['axis']) updateMeshes(gl.meshes['axis']);
-        if (gl.meshes['label']) updateMeshes(gl.meshes['label']);
-        if (gl.meshes['points']) updateMeshes(gl.meshes['points']);
-        if (gl.meshes['lines']) updateMeshes(gl.meshes['lines']);
-        /*
         Object.keys(gl.meshes).forEach(function(key) {
             gl.meshes[key].forEach(function(m) {
-								//m.matrix.copy(d3gl.rotationMatrix);
-								//m.matrix.multiply(m.adjustedMatrix);
-								//m.rotation.setEulerFromRotationMatrix(
-								//new THREE.Matrix4().copy(d3gl.rotationMatrix))
-                m.rotation.x = -d3gl.rotation.lat*Math.PI/180;
-                m.rotation.y = d3gl.rotation.lon*Math.PI/180;
+								m.matrix.copy(d3gl.rotationMatrix);
+								m.matrix.multiply(m.adjustedMatrix);
+                m.matrixWorldNeedsUpdate = true;
             }); 
         });
-        */
+
         gl.renderer.render(gl.scene, gl.camera);
         requestAnimationFrame(function() { graphRender(gl);});
     }
@@ -2173,6 +2162,7 @@ d3.gl.graph = function() {
             pointcloud = new THREE.ParticleSystem(geometry, material);
             //TODO: only sort particles when less than some threshold
             pointcloud.sortParticles = true;
+            pointcloud.matrixAutoUpdate = false;
             gl.meshes['points'].push(pointcloud);
 
             d3gl.scaleModel(pointcloud, scale, gl);
@@ -2402,6 +2392,7 @@ d3.gl.graph = function() {
             // Create and add line
             line = new THREE.Line(lineGeometry, lineMaterial);
 						line.adjustedMatrix = new THREE.Matrix4().copy(line.matrix);
+            line.matrixAutoUpdate = false;
             gl.scene.add(line);
             gl.meshes['axis'].push(line);
         }
@@ -2518,6 +2509,7 @@ d3.gl.graph = function() {
 
 								tickMarks.adjustedMatrix = new THREE.Matrix4().copy(
 									tickMarks.matrix);
+                tickMarks.matrixAutoUpdate = false;
                 gl.scene.add(tickMarks);
                 gl.meshes['axis'].push(tickMarks);
             };
@@ -2605,6 +2597,7 @@ d3.gl.graph = function() {
                     })
                 );
 								labelMesh.adjustedMatrix = new THREE.Matrix4().copy(labelMesh.matrix);
+                labelMesh.matrixAutoUpdate = false;
                 gl.scene.add(labelMesh);
                 gl.meshes['axis'].push(labelMesh);
             };
