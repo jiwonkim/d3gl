@@ -2333,7 +2333,8 @@ d3.gl.graph = function() {
     graph.axis = function() {
         var axisUpdate = true;
         var fnData = function(d) { return d; };
-        var fnScale, fnOrient, fnThickness, fnOffset;
+        var fnScale, fnOrient, fnThickness, fnOffset, fnColor;
+        var fnTicks;
         var ticksRenderer, labelRenderer;
 
         // Called once per frame
@@ -2346,39 +2347,45 @@ d3.gl.graph = function() {
 
             // For each axis, create and add meshes to scene
             data.forEach(function(datum) {
-                var orient, scale, p0, p1;
+                var orient, scale, p0, p1, offset;
                 orient = fnOrient(datum);
                 scale = fnScale(datum);
                 p0 = scale.domain()[0];
                 p1 = scale.domain()[1];
 
+                // The offset corresponding to the line's orientation
+                // will be ignored.
+                offset = fnOffset ? fnOffset(datum) : {"x": 0, "y": 0, "z": 0};
+
                 /* Create axis as line */
-                drawLine(gl, datum);
+                drawLine(gl, datum, offset);
 
                 /* Create tick marks as particles with texture */ 
-                if(ticksRenderer) ticksRenderer(gl, datum);
+                var drawTicks = fnTicks ? fnTicks(datum) : true;
+                if(drawTicks && ticksRenderer) ticksRenderer(gl, datum, offset);
 
                 /* Create a label for the axis */
-                if(labelRenderer) labelRenderer(gl, datum);
+                if(drawTicks && labelRenderer) labelRenderer(gl, datum, offset);
             });
         };
-        function drawLine(gl, datum) {
-            var orient, scale, p0, p1;
+        function drawLine(gl, datum, offset) {
+            var orient, scale, p0, p1, color;
             orient = fnOrient(datum);
             scale = fnScale(datum);
             p0 = scale.domain()[0];
             p1 = scale.domain()[1];
-            
+            color = fnColor ? fnColor(datum) : 0x000000;
+
             var lineGeometry, v0, v1, lineMaterial, line;
             
             // Line lineGeometry
             lineGeometry = new THREE.Geometry();
-            lineGeometry.vertices.push(getPointOnAxis(gl, orient, p0));
-            lineGeometry.vertices.push(getPointOnAxis(gl, orient, p1));
+            lineGeometry.vertices.push(getPointOnAxis(gl, orient, p0, offset));
+            lineGeometry.vertices.push(getPointOnAxis(gl, orient, p1, offset));
 
             // Line material
             lineMaterial = new THREE.LineBasicMaterial({
-                'color': new THREE.Color(0x000000),
+                'color': new THREE.Color(color),
                 'opacity': 1,
                 'linewidth': fnThickness ? fnThickness(datum) : 3
             }); 
@@ -2389,14 +2396,15 @@ d3.gl.graph = function() {
             line.matrixAutoUpdate = false;
             gl.graph.add(line);
         }
-        function getPointOnAxis(gl, orient, p) {
+        function getPointOnAxis(gl, orient, p, offset) {
+            if (!offset) {
+              offset = {"x": 0, "y": 0, "z": 0};
+            }
             var v = new THREE.Vector3(
-                orient === "x" ? p : 0,
-                orient === "y" ? p : 0,
-                orient === "z" ? p : 0
+                orient === "x" ? p : offset["x"],
+                orient === "y" ? p : offset["y"],
+                orient === "z" ? p : offset["z"]
             );
-            //v.add(gl.centerTranslation);
-            //v.multiplyScalar(gl.scale);
             return v;
         }
         function generateTickMarkTexture(tick, size, font, color) {
@@ -2438,6 +2446,12 @@ d3.gl.graph = function() {
             else fnOrient = function() { return val;};
             return axis;
         };
+        axis.color = function(val) {
+            if (arguments.length===0) return fnColor;
+            if (typeof val === "function") fnColor = val;
+            else fnColor = function() { return val;};
+            return axis;
+        };
         axis.thickness = function(val) {
             if (arguments.length===0) return fnThickness;
             if (typeof val === "function") fnThickness = val;
@@ -2450,6 +2464,12 @@ d3.gl.graph = function() {
             else fnOffset = function() { return val;};
             return axis;
         };
+        axis.drawTicks = function(val) {
+            if (arguments.length===0) return fnTicks;
+            if (typeof val === "function") fnTicks = val;
+            else fnTicks = function() { return val;};
+            return axis;
+        };
 
         /** TICKS on axis **/
         axis.ticks = function() {
@@ -2457,7 +2477,8 @@ d3.gl.graph = function() {
                 fnFont, fnResolution, fnColor;
             //TODO fnValues
 
-            var ticks = function(gl, datum) {
+            var ticks = function(gl, datum, offset) {
+                console.log("Drawing ticks");
                 var orient, scale, ticks, count, tickMarks;
                 orient = fnOrient(datum);
                 scale = fnScale(datum);
@@ -2465,6 +2486,9 @@ d3.gl.graph = function() {
                 // TICKS should be an array of tick marks on the axis
                 // ex) [-1, 0, 1]
                 ticks = scale.ticks(fnCount(datum));
+                console.log(ticks);
+                ticks.splice(0, 1);
+                console.log(ticks);
 
                 // tickMarks is a group of tickMark meshes
                 tickMarks = new THREE.Object3D();
@@ -2478,7 +2502,7 @@ d3.gl.graph = function() {
                     if (fnFormat) tick = fnFormat(tick);
 
                     tickMark = new THREE.Geometry();
-                    tickMark.vertices = [getPointOnAxis(gl, orient, tick)];
+                    tickMark.vertices = [getPointOnAxis(gl, orient, tick, offset)];
 
                     if (fnResolution) tickResolution = fnResolution(datum);
                     if (fnFont) font = fnFont(datum);
@@ -2550,7 +2574,7 @@ d3.gl.graph = function() {
         axis.label = function() {
             var fnText, fnSize, fnResolution, fnFont, fnColor;
 
-            var label = function(gl, datum) {
+            var label = function(gl, datum, offset) {
                 var orient, scale, p0, p1;
                 orient = fnOrient(datum);
                 scale = fnScale(datum);
@@ -2561,7 +2585,7 @@ d3.gl.graph = function() {
                 label = fnText ? fnText(datum) : orient;
 
                 labelGeometry = new THREE.Geometry();
-                labelGeometry.vertices = [getPointOnAxis(gl, orient, p1)];
+                labelGeometry.vertices = [getPointOnAxis(gl, orient, p1, offset)];
 
                 var labelResolution, labelFont, labelColor;
                 if (fnResolution) labelResolution = fnResolution(datum);
