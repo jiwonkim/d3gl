@@ -76,45 +76,59 @@ d3.gl = function() {
     }
     d3gl.orient = function(orientation) {
         switch(orientation) {
-          case "x": d3gl.rotate([-180, 90]); break;
-          case "y": d3gl.rotate([-90, 0]); break;
-          case "z": d3gl.rotate([180, 0]); break;
+          //TODO: Find x orientation!!
+          case "x": d3gl.rotate([0, 45]); break;
+          case "-x": d3gl.rotate([180, 0]); break;
+          case "y": d3gl.rotate([270, 0]); break;
+          case "-y": d3gl.rotate([90, 90]); break;
+          case "z": d3gl.rotate([180, 90]); break;
           default: break;
         }
+        console.log(orientation + ": ");
+        console.log(d3gl.rotationMatrix);
     }
 
     /** THREE.js model scaling and centering related **/
     d3gl.scaleModel = function(model, multiplier, gl) {
-        //if (!gl.scale) {
+        if (!gl.scale) {
             var bbox = getBoundingBox(model);
             var w = bbox.max.x - bbox.min.x;
             var h = bbox.max.y - bbox.min.y;
             var depth = bbox.max.z - bbox.min.z;
             gl.scale = 1.5/Math.max(w, Math.max(h, depth));
             gl.scale *= multiplier;
-        //}
+        }
         model.scale.x = model.scale.y = model.scale.z = gl.scale;
+        model.updateMatrix();
     };
     d3gl.centerModel = function(model, gl) {
-        //if (!gl.centerTranslation) {
+        if (!gl.centerTranslation) {
             var bbox = getBoundingBox(model);
             var centerPoint = new THREE.Vector3().addVectors(bbox.min, bbox.max)
                 .multiplyScalar(0.5);
             gl.centerTranslation = new THREE.Vector3().subVectors(
                 model.position, centerPoint);
-        //}
-        translateModelVertices(model, gl.centerTranslation);
+            translateModelVertices(model, gl.centerTranslation);
+
+        // TODO: check if gl.scale exists, etc.
+        } else {
+            translateModelVertices(model, new THREE.Vector3().copy(gl.centerTranslation).multiplyScalar(gl.scale));
+        }
         model.updateMatrix();
     };
+    // Following isn't used anywhere.. TODO?
     d3gl.centerModelByWeight = function(model, gl) {
-        //if (!gl.centerTranslation) {
+        if (!gl.centerTranslation) {
             var centerPoint = new THREE.Vector3();
             addVertices(model, centerPoint);
             centerPoint.multiplyScalar(1/countVertices(model));
             gl.centerTranslation = new THREE.Vector3().subVectors(
               model.position, centerPoint);
-        //}
-        translateModelVertices(model, gl.centerTranslation);
+            translateModelVertices(model, gl.centerTranslation);
+        } else {
+            translateModelVertices(model, new THREE.Vector3().copy(gl.centerTranslation).multiplyScalar(gl.scale));
+        }
+
         model.updateMatrix();
     };
     function translateModelVertices(model, translation) {
@@ -122,7 +136,7 @@ d3.gl = function() {
             model.geometry.vertices.forEach(function(vertex) {
                 vertex.add(translation);
             });
-        }else{
+        } else {
             for(var i in model.children){
                 child = model.children[i];
                 translateModelVertices(child, translation);
@@ -189,7 +203,7 @@ d3.gl = function() {
     var MAX_ZOOM = 4;
     var MOUSE_SENSITIVITY = 0.6; // degrees rotated per pixel
     var ZOOM_SENSITIVITY = 0.1; // (0 = no effect, 1 = infinite)
-    var VIEW_ANGLE = 45,
+    var VIEW_ANGLE = 30,
         NEAR = 0.01,
         FAR = 100;
 
@@ -2028,7 +2042,6 @@ d3.gl.model = function() {
 d3.gl.graph = function() {
     var d3gl = d3.gl();
     var overlay3D = [];
-    var updateGraph = false;
 
     var graph = function(g) {
         g.each(graphInit);
@@ -2046,11 +2059,32 @@ d3.gl.graph = function() {
           'lines': true,
           'axis': true
         };
-        gl.meshes = {};
+        gl.updateGraph = true;
 
         // Pass in true for orthographic perspective
-        //TODO: make ortho zoom work
-        d3gl.init(gl, true);
+        //d3gl.init(gl, true);
+        d3gl.init(gl);
+
+        gl.graph = new THREE.Object3D();
+        gl.graph.matrixAutoUpdate = false;
+
+        Object.keys(gl.update).forEach(function(key) {
+          gl.update[key] = true;
+        });
+        overlay3D.forEach(function(overlayFn) {
+            overlayFn(gl);
+        });
+
+        d3gl.scaleModel(gl.graph, 1, gl);
+        d3gl.centerModelByWeight(gl.graph, gl);
+        gl.graph.adjustedMatrix = new THREE.Matrix4().copy(d3gl.rotationMatrix);
+
+        gl.graph.children.forEach(function(child) {
+            d3gl.scaleModel(child, 1, gl);
+            d3gl.centerModel(child, gl);
+        });
+
+        gl.scene.add(gl.graph);
 
         // Add canvas to DOM
         gl.element.appendChild(gl.renderer.domElement);
@@ -2059,18 +2093,13 @@ d3.gl.graph = function() {
     function graphRender(gl) {
         d3gl.update(gl);
         d3gl.fireEvent("update", null);
+        
+        // Update rotation
+        gl.graph.matrix.copy(d3gl.rotationMatrix);
+        gl.graph.matrix.multiply(gl.graph.adjustedMatrix);
+        gl.graph.matrixWorldNeedsUpdate = true;
 
-        if (updateGraph) {
-          updateGraph = false;
-          Object.keys(gl.update).forEach(function(key) {
-            gl.update[key] = true;
-          });
-        }
-  
-        overlay3D.forEach(function(overlayFn) {
-            overlayFn(gl);
-        });
-
+/*
         Object.keys(gl.meshes).forEach(function(key) {
             gl.meshes[key].forEach(function(m) {
 								m.matrix.copy(d3gl.rotationMatrix);
@@ -2078,6 +2107,7 @@ d3.gl.graph = function() {
                 m.matrixWorldNeedsUpdate = true;
             }); 
         });
+        */
 
         gl.renderer.render(gl.scene, gl.camera);
         requestAnimationFrame(function() { graphRender(gl);});
@@ -2100,9 +2130,11 @@ d3.gl.graph = function() {
       d3gl.orient(val);
       return graph;
     };
+    /*
     graph.update = function() {
       updateGraph = true;
     };
+    */
 
 
     graph.points = function() {
@@ -2120,16 +2152,6 @@ d3.gl.graph = function() {
         };
 
         function initPoints(gl) {
-            // Empty the outdated pointcloud mesh
-            if (gl.meshes['points']) {
-              gl.meshes['points'].forEach(function(m) {
-                gl.scene.remove(m);
-              });
-            }
-            gl.meshes['points'] = [];
-
-            // Toggle off update
-
             var dataArray, scale, geometry, material, texture, pointcloud;
             if (!fnData || !(dataArray = fnData(gl.datum, gl.index))) {
                 throw "Please specify point cloud data using pointcloud.data";
@@ -2161,14 +2183,11 @@ d3.gl.graph = function() {
 
             pointcloud = new THREE.ParticleSystem(geometry, material);
             //TODO: only sort particles when less than some threshold
-            pointcloud.sortParticles = true;
+            if (geometry.vertices.length < 1000) {
+              pointcloud.sortParticles = true;
+            }
             pointcloud.matrixAutoUpdate = false;
-            gl.meshes['points'].push(pointcloud);
-
-            d3gl.scaleModel(pointcloud, scale, gl);
-            d3gl.centerModelByWeight(pointcloud, gl);
-						pointcloud.adjustedMatrix = new THREE.Matrix4().copy(pointcloud.matrix);
-            gl.scene.add(pointcloud);
+            gl.graph.add(pointcloud);
         }
         function generatePointTexture() {
             // create canvas
@@ -2238,14 +2257,6 @@ d3.gl.graph = function() {
             if (!gl.update['lines']) return;
             gl.update['lines'] = false;
 
-            // Empty the outdated lines mesh
-            if (gl.meshes['lines']) {
-              gl.meshes['lines'].forEach(function(m) {
-                gl.scene.remove(m);
-              });
-            }
-            gl.meshes['lines'] = [];
-
             var linesObject = new THREE.Object3D();
             var dataArray = fnData(gl.datum, gl.index);
             $.each(dataArray, function(index, datum) {
@@ -2277,14 +2288,7 @@ d3.gl.graph = function() {
                 line = new THREE.Line(geometry, material);
                 linesObject.add(line);
             });
-            d3gl.scaleModel(linesObject, 1, gl);
-            d3gl.centerModelByWeight(linesObject, gl);
-						linesObject.adjustedMatrix = new THREE.Matrix4().copy(
-							linesObject.matrix);
-
-            // Add line
-            gl.scene.add(linesObject);
-            gl.meshes['lines'].push(linesObject);
+            gl.graph.add(linesObject);
         };
 
         lines.data = function(val) {
@@ -2331,21 +2335,11 @@ d3.gl.graph = function() {
         var fnData = function(d) { return d; };
         var fnScale, fnOrient, fnThickness, fnOffset;
         var ticksRenderer, labelRenderer;
-        var grid = false;
 
         // Called once per frame
         var axis = function(gl) {
             if (!gl.update['axis']) return;
             gl.update['axis'] = false;
-
-            // Newly updating. Remove previous.
-            if (gl.meshes['axis']) {
-                gl.meshes['axis'].forEach(function(m) {
-                    gl.scene.remove(m);
-                });
-            } else {
-                gl.meshes['axis'] = [];
-            }
 
             // Num data elements = num axes for graph
             var data = fnData(gl.datum);
@@ -2393,8 +2387,7 @@ d3.gl.graph = function() {
             line = new THREE.Line(lineGeometry, lineMaterial);
 						line.adjustedMatrix = new THREE.Matrix4().copy(line.matrix);
             line.matrixAutoUpdate = false;
-            gl.scene.add(line);
-            gl.meshes['axis'].push(line);
+            gl.graph.add(line);
         }
         function getPointOnAxis(gl, orient, p) {
             var v = new THREE.Vector3(
@@ -2402,8 +2395,8 @@ d3.gl.graph = function() {
                 orient === "y" ? p : 0,
                 orient === "z" ? p : 0
             );
-            v.add(gl.centerTranslation);
-            v.multiplyScalar(gl.scale);
+            //v.add(gl.centerTranslation);
+            //v.multiplyScalar(gl.scale);
             return v;
         }
         function generateTickMarkTexture(tick, size, font, color) {
@@ -2510,8 +2503,7 @@ d3.gl.graph = function() {
 								tickMarks.adjustedMatrix = new THREE.Matrix4().copy(
 									tickMarks.matrix);
                 tickMarks.matrixAutoUpdate = false;
-                gl.scene.add(tickMarks);
-                gl.meshes['axis'].push(tickMarks);
+                gl.graph.add(tickMarks);
             };
 
             ticks.count = function(val) {
@@ -2559,14 +2551,6 @@ d3.gl.graph = function() {
             var fnText, fnSize, fnResolution, fnFont, fnColor;
 
             var label = function(gl, datum) {
-                // Clear the canvas of any previous labels
-                if(gl.meshes['label']) {
-                  gl.meshes['label'].forEach(function(m) {
-                    gl.scene.remove(m);
-                  });
-                } 
-                gl.meshes['label'] = [];
-
                 var orient, scale, p0, p1;
                 orient = fnOrient(datum);
                 scale = fnScale(datum);
@@ -2598,8 +2582,7 @@ d3.gl.graph = function() {
                 );
 								labelMesh.adjustedMatrix = new THREE.Matrix4().copy(labelMesh.matrix);
                 labelMesh.matrixAutoUpdate = false;
-                gl.scene.add(labelMesh);
-                gl.meshes['axis'].push(labelMesh);
+                gl.graph.add(labelMesh);
             };
             label.text = function(val) {
                 if (arguments.length===0) return fnText;
