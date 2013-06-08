@@ -263,7 +263,7 @@ d3.gl = function() {
         scene = new THREE.Scene();
 
         // camera
-        if (d3gl.orthographicCamera) {
+        if (d3gl.orthographicCamera) { // currently no primitive using ortho
           camera = new THREE.OrthographicCamera();
           MOUSE_SENSITIVITY = 1;
 				  camera.position.z = 5;
@@ -271,7 +271,6 @@ d3.gl = function() {
           camera = new THREE.PerspectiveCamera(
               VIEW_ANGLE, width/height,
               NEAR, FAR);
-				  camera.position.z = 2;
         }
         if (!zoom) d3gl.zoom(2);
         scene.add(camera);
@@ -288,7 +287,6 @@ d3.gl = function() {
         gl.projector = new THREE.Projector();
         window.gl = gl;
     }
-
     function zoomUpdate(val) {
         //TODO: in orthographic perspective, just make the camera window smaller
         zoom *= val;
@@ -341,6 +339,9 @@ d3.gl.globe = function(){
     // atmosphere is turned off by default
     var fnAtmosphere = function(d) { return false; };
 
+    var update;
+    var numGlobes = 0;
+
     // *** PRIVATE
     // overlays. these are functions that either render onto the globe tex
     // (eg colored countries), or which run after the globe itself to draw
@@ -355,6 +356,9 @@ d3.gl.globe = function(){
     // *** RENDER FUNCTION
     // see http://bost.ocks.org/mike/chart/
     function globe(g){
+        numGlobes = g[0].length;
+        update = numGlobes;
+        console.log(update);
         g.each(globeInit);
     }
     function globeInit(d,i){
@@ -371,6 +375,7 @@ d3.gl.globe = function(){
         gl.index = i;
         gl.shaders = shaders.globe;
         gl.textures = {};
+
 
         // load textures
         var canvas = document.createElement("canvas");
@@ -405,6 +410,16 @@ d3.gl.globe = function(){
     // called 60 times per second
     function globeRender(gl) {
         d3gl.update(gl);
+
+        // For primitives such as heatmap that we don't want to update
+        // per frame but rather when manually called
+        if (update) {
+          console.log(update);
+          gl.update = {
+            'heatmap': true
+          };
+          update--;
+        }
         d3gl.fireEvent("update", gl);
 
         //gl.scene.overrideMaterial = true;
@@ -681,23 +696,26 @@ d3.gl.globe = function(){
         if(typeof val === "function") fnAtmosphere = val;
         else fnAtmosphere = function(){return val;}
         return globe;
-    }
+    };
     globe.on = function(eventName, callback){
         d3gl.addEventHandler(eventName, callback);
         return globe;
-    }
+    };
     globe.rotation = function(latlon){
         if(!arguments.length) return rotation;
         if(!latlon || !latlon.lat || !latlon.lon) throw "Invalid rotation()";
         rotation = latlon;
         return globe;
-    }
+    };
     globe.zoom = function(z){
         if(!arguments.length) return d3gl.zoom();
         if(!z || z<0) throw "Invalid zoom()";
         d3gl.zoom(z);
         return globe;
-    }
+    };
+    globe.update = function() {
+        update = numGlobes;
+    };
 
     // *** FUNCTIONS
     globe.rotateTo = function(latlon, ms){
@@ -1435,56 +1453,57 @@ d3.gl.globe = function(){
     // heatmap    
     globe.heatmap = function() {
         var fnData = function(d) { return d; };
-        var heatCanvas = document.createElement("canvas"); // hidden canvas
-        var gradientCanvas = document.createElement("canvas");
 
         var fnLat, fnLon; // returns latitude and longitude for data point
         var fnDensity; // takes data object and returns density [0, 1]
+        var fnGradient; // gives back gradient stops for density
 
-        var radius, gradient;
-        var heatmapImg;
+        var radius, blur;
 
-        var update = true; // heatmap is manually updated
         function heatmap(gl, context) {
-            if(update) {
-                heatmapImg = renderHeatmap(gl, context, fnData(gl.datum));
-                update = false;
+            if(gl.update['heatmap']) {
+                gl.update['heatmap'] = false;
+                gl.heatCanvas = document.createElement("canvas"); // hidden canvas
+                gl.gradientCanvas = document.createElement("canvas");
+                gl.heatmapImg = renderHeatmap(gl, context, fnData(gl.datum));
             }
-            context.drawImage(heatmapImg, 0, 0, context.width, context.height);
+            context.drawImage(gl.heatmapImg, 0, 0, context.width, context.height);
         }
 
         function renderHeatmap(gl, context, data) {
             var rx = context.width;
             var ry = context.height;
-            heatCanvas.width = rx;
-            heatCanvas.height = ry;
-            var heatContext = heatCanvas.getContext("2d");
+            gl.heatCanvas.width = rx;
+            gl.heatCanvas.height = ry;
+            var heatContext = gl.heatCanvas.getContext("2d");
             heatContext.clearRect(0, 0, rx, ry);
 
             // set up gradient
-            if(!gradient) {
-                gradient = {};
-                gradient.stops = { 0.4: "rgb(0,0,255)", 0.5: "rgb(0,255,255)",
+            if(!gl.gradient) {
+                gl.gradient = {};
+                gl.gradient.stops = fnGradient ? fnGradient(gl.datum, gl.index) :
+                  { 0.4: "rgb(0,0,255)", 0.5: "rgb(0,255,255)",
                     0.6: "rgb(0,255,0)", 0.8: "yellow", 0.95: "rgb(255,0,0)"};
-                gradient.length = gradientCanvas.width = 100;
-                gradientCanvas.height = 10;
-                var gradientContext = gradientCanvas.getContext("2d");
+                gl.gradient.length = gl.gradientCanvas.width = 100;
+                gl.gradientCanvas.height = 10;
+                var gradientContext = gl.gradientCanvas.getContext("2d");
                 var linearGradient = gradientContext.createLinearGradient(0, 0, 100, 10);
 
-                Object.keys(gradient.stops).forEach(function(key) {
-                    linearGradient.addColorStop(key, gradient.stops[key]);
+                Object.keys(gl.gradient.stops).forEach(function(key) {
+                    linearGradient.addColorStop(parseFloat(key), gl.gradient.stops[key]);
                 });
 
                 gradientContext.fillStyle = linearGradient;
                 gradientContext.fillRect(0, 0, 100, 10);
-                gradient.data = gradientContext.getImageData(0, 5, 100, 5).data;
+                gl.gradient.data = gradientContext.getImageData(0, 5, 100, 5).data;
             }
             
             // set shadow properties
             if(!radius) radius = 0.01*rx; // default radius is 1% of width
+            if(!blur) blur = radius;
             heatContext.shadowOffsetX = 20000;
             heatContext.shadowOffsetY = 20000;
-            heatContext.shadowBlur = radius;
+            heatContext.shadowBlur = blur;
 
             // for each data, draw a shadow
             data.forEach(function(d) {
@@ -1492,6 +1511,8 @@ d3.gl.globe = function(){
                 var lat = parseFloat(fnLat(d));
                 var lon = parseFloat(fnLon(d));
                 var density = fnDensity(d);
+                if (density > 1) density = 0.99;
+
                 //var pradius = radius * context.width / 360.0;
                 var plat = ry * (1-(lat + 90)/180);
                 var plon = rx * (lon + 180)/360;
@@ -1510,17 +1531,17 @@ d3.gl.globe = function(){
                 for(var c=0; c<rx; c++) {
                     var idx = (c + r*rx)*4;
                     var density = pixels.data[idx + 3]/255;
-                    var offset = (Math.floor(gradient.length * density))*4;
-                    pixels.data[idx] = gradient.data[offset];
-                    pixels.data[idx + 1] = gradient.data[offset + 1];
-                    pixels.data[idx + 2] = gradient.data[offset + 2];
+                    var offset = (Math.floor(gl.gradient.length * density))*4;
+                    pixels.data[idx] = gl.gradient.data[offset];
+                    pixels.data[idx + 1] = gl.gradient.data[offset + 1];
+                    pixels.data[idx + 2] = gl.gradient.data[offset + 2];
                 }
             }
             heatContext.clearRect(0, 0, rx, ry);
             heatContext.putImageData(pixels, 0, 0);
 
             var map = new Image();
-            map.src = heatCanvas.toDataURL("image/png");
+            map.src = gl.heatCanvas.toDataURL("image/png");
             return map;
         }
 
@@ -1534,6 +1555,19 @@ d3.gl.globe = function(){
         heatmap.radius = function(val) {
             if(arguments.length == 0) return radius;
             radius = val;
+            return heatmap;
+        }
+
+        heatmap.blur = function(val) {
+            if(arguments.length == 0) return blur;
+            blur = val;
+            return heatmap;
+        }
+
+        heatmap.gradient = function(val) {
+            if(arguments.length == 0) return fnGradient;
+            if(typeof val == "function") fnGradient = val;
+            else fnGradient = function(){return val;};
             return heatmap;
         }
 
@@ -2478,7 +2512,6 @@ d3.gl.graph = function() {
             //TODO fnValues
 
             var ticks = function(gl, datum, offset) {
-                console.log("Drawing ticks");
                 var orient, scale, ticks, count, tickMarks;
                 orient = fnOrient(datum);
                 scale = fnScale(datum);

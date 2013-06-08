@@ -6,7 +6,7 @@
 </head>
 <body>
 
-<h1>Hello World</h1>
+<h1>Hello Earth</h1>
 
 <script type="text/javascript" src="../js/jquery-1.8.2.js"></script>
 <script type="text/javascript" src="../js/jquery.mousewheel.js"></script>
@@ -19,16 +19,13 @@
 
 <script type="text/javascript">
 $(function(){
-var rainfall = []; // TODO
-
 var textures = [
     "../img/earth-tex.png", 
     "../img/earth-night-tex.jpg",
     "../img/earth-bump.jpg"
 ];
 var globe = d3.gl.globe()
-    .latitude(function(d){return d.lat;})
-    .longitude(function(d){return d.lon;})
+    .width(600).height(600).zoom(4)
     .texture(function(d){return d;});
 
 d3.select("body").selectAll("span")

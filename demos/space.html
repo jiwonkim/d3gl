@@ -21,12 +21,12 @@ margin-right:0;
 }
 #year{
 position:absolute;
-top:300px;
+top:500px;
 left:660px;
 }
 #labels span {
 display:inline-block;
-width:240px;
+width:400px;
 text-align:center;
 }
 </style>
@@ -60,9 +60,9 @@ $(function(){
         .data(bodies).enter().append("span")
         .text(function(body){ return body; });
     var globe = d3.gl.globe()
-        .width(240).height(240)
+        .width(400).height(400).zoom(4)
         .texture(function(body){return "../img/"+body+"-tex.jpg";}) 
-        .transparency(function(body){ return Math.max(1.25 - globe.zoom()/2, 0.3); }); // zoom in -> opaque, zoom out -> glassy
+        .transparency(function(body){ return Math.max(2.3 - globe.zoom()/2, 0.3); }); // zoom in -> opaque, zoom out -> glassy
 
     // now, render all the landings onto the globes
     d3.csv("../data/space.csv", function(rows){
