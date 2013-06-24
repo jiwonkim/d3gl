@@ -1,8 +1,5 @@
 // Jiwon Kim and Dan Posch
 // {jiwonk, dcposch}@cs.stanford.edu
-// CS448B Final Project
-
-// See README.md for examples.
 
 // check prerequisites 
 if(!d3 || !jQuery || !THREE || !requestAnimationFrame){
@@ -10,10 +7,10 @@ if(!d3 || !jQuery || !THREE || !requestAnimationFrame){
 }
 
 d3.gl = function() {
-    function d3gl() {
-    }
+    function d3gl() {}
 
     /** PUBLIC **/
+    d3gl.orthographicCamera = false;
     d3gl.width = function(val){
         if(!arguments.length) return width;
         width = val;
@@ -22,17 +19,22 @@ d3.gl = function() {
         if(!arguments.length) return height;
         height = val;
     }
-
+    d3gl.zoomUpdated = false;
     d3gl.zoom = function(val) {
-        if (arguments.length === 0) return zoom; 
-        else zoom = val;
+        if (arguments.length === 0){
+					return zoom; 
+        } else {
+          zoom = val;
+        }
     };
     d3gl.rotation = {"lat":0,"lon":0};
+		d3gl.rotationMatrix = new THREE.Matrix4();
     d3gl.mouseEventCallback = function(val) {
         if (arguments.length === 0) return mouseEventCallback;
         else mouseEventCallback = val;
     }
-    d3gl.init = function(gl) {
+    d3gl.init = function(gl, ortho) {
+        if (ortho) d3gl.orthographicCamera = true;
         initGL(gl);
         initControls(gl, gl.renderer.domElement);
         initStyle(gl.renderer.domElement); // <canvas> style
@@ -52,12 +54,136 @@ d3.gl = function() {
     };
     // To be called on each render loop
     d3gl.update = function(gl) {
-        gl.camera.position.z = 1 + zoom;
+        if (d3gl.orthographicCamera) {
+          gl.camera.left = -zoom*width/height;
+          gl.camera.right = zoom*width/height;
+          gl.camera.top = -zoom;
+          gl.camera.bottom = zoom;
+          gl.camera.updateProjectionMatrix();
+        } else {
+          gl.camera.position.z = 1 + zoom;
+        }
+    }
+    d3gl.rotate = function(latlon) {
+        d3gl.rotation.lat = latlon[0];
+        d3gl.rotation.lon = latlon[1];
+
+        d3gl.rotationMatrix = new THREE.Matrix4().makeRotationFromEuler({
+          x:latlon[0]*Math.PI/180, 
+          y:latlon[1]*Math.PI/180, 
+          z:latlon.length==3 ? latlon[2]*Math.PI/180 : 0
+        });
+    }
+    d3gl.orient = function(orientation) {
+        switch(orientation) {
+          case "x": d3gl.rotate([90, 180, 90]); break;
+          case "-x": d3gl.rotate([90, 90, 270]); break;
+          case "y": d3gl.rotate([90, 90]); break;
+          case "-y": d3gl.rotate([270, 0]); break;
+          case "z": d3gl.rotate([0, 0]); break;
+          case "-z": d3gl.rotate([180, 0, 270]); break;
+          default: break;
+        }
+        console.log(orientation + ": ");
+    }
+
+    /** THREE.js model scaling and centering related **/
+    d3gl.scaleModel = function(model, multiplier, gl) {
+        var updateMatrix = gl.scale || model.geometry;
+        if (!gl.scale) {
+            var bbox = getBoundingBox(model);
+            var w = bbox.max.x - bbox.min.x;
+            var h = bbox.max.y - bbox.min.y;
+            var depth = bbox.max.z - bbox.min.z;
+            gl.scale = 2/Math.max(w, Math.max(h, depth));
+            gl.scale *= multiplier;
+        }
+        if (updateMatrix) {
+            model.scale.x = model.scale.y = model.scale.z = gl.scale;
+            model.updateMatrix();
+        }
+    };
+    d3gl.centerModel = function(model, gl) {
+        if (!gl.centerTranslation) {
+            var bbox = getBoundingBox(model);
+            var centerPoint = new THREE.Vector3().addVectors(bbox.min, bbox.max)
+                .multiplyScalar(0.5);
+            gl.centerTranslation = new THREE.Vector3().subVectors(
+                model.position, centerPoint);
+            translateModelVertices(model, gl.centerTranslation);
+
+        // TODO: check if gl.scale exists, etc.
+        } else {
+            translateModelVertices(model, new THREE.Vector3().copy(gl.centerTranslation).multiplyScalar(gl.scale));
+        }
+        model.updateMatrix();
+    };
+    // Following isn't used anywhere.. TODO?
+    d3gl.centerModelByWeight = function(model, gl) {
+        if (!gl.centerTranslation) {
+            var centerPoint = new THREE.Vector3();
+            addVertices(model, centerPoint);
+            centerPoint.multiplyScalar(1/countVertices(model));
+            gl.centerTranslation = new THREE.Vector3().subVectors(
+              model.position, centerPoint);
+            translateModelVertices(model, gl.centerTranslation);
+        } else {
+            translateModelVertices(model, new THREE.Vector3().copy(gl.centerTranslation).multiplyScalar(gl.scale));
+        }
+
+        model.updateMatrix();
+    };
+    function translateModelVertices(model, translation) {
+        if(model.geometry){
+            model.geometry.vertices.forEach(function(vertex) {
+                vertex.add(translation);
+            });
+        } else {
+            for(var i in model.children){
+                child = model.children[i];
+                translateModelVertices(child, translation);
+            }
+        } 
+    }
+    function countVertices(model) {
+        if (!model) return null;
+        if (!model.geometry) {
+            var count = 0; 
+            model.children.forEach(function(child) {
+                count += countVertices(child);
+            });
+            return count;
+        }
+        return model.geometry.vertices.length;
+    }
+    function addVertices(model, sum) {
+        if (!model) return null;
+        if (!model.geometry) {
+            model.children.forEach(function(child) {
+                addVertices(child, sum);
+            });
+        } else {
+            model.geometry.vertices.forEach(function(vertex) {
+                sum.add(vertex);
+            });
+        }
+    }
+    function getBoundingBox(model) {
+        if (!model) return null;
+        if (!model.geometry) {
+            var bbox = new THREE.Box3();
+            model.children.forEach(function(child) {
+                bbox.union(getBoundingBox(child));
+            });
+            return bbox;
+        }
+        model.geometry.computeBoundingBox();
+        return model.geometry.boundingBox;
     }
 
     /** PRIVATE **/
     // variables
-    var zoom = 2.0;
+    var zoom;
     var dragStart = null;
     var eventHandlers = {
         // mouse handlers
@@ -75,11 +201,11 @@ d3.gl = function() {
     // user-defined callback function for when mouse events are fired
     var mouseEventCallback;
     // constants
-    var MIN_ZOOM = 0.5;
-    var MAX_ZOOM = 4;
-    var MOUSE_SENSITIVITY = 0.15; // degrees rotated per pixel
+    var MIN_ZOOM = 0.01;
+    var MAX_ZOOM = 10;
+    var MOUSE_SENSITIVITY = 0.3; // degrees rotated per pixel
     var ZOOM_SENSITIVITY = 0.1; // (0 = no effect, 1 = infinite)
-    var VIEW_ANGLE = 45,
+    var VIEW_ANGLE = 30,
         NEAR = 0.01,
         FAR = 100;
 
@@ -125,6 +251,7 @@ d3.gl = function() {
             else if(key=="s") zoomUpdate(1.2); // zoom out
             else if(key=="a") d3gl.rotation.lon -= 10;
             else if(key=="d") d3gl.rotation.lon += 10;
+            else if(key=="x" || key=="y" || key=="z") d3gl.orient(key);
             else return;
             evt.preventDefault();
         });
@@ -136,10 +263,16 @@ d3.gl = function() {
         scene = new THREE.Scene();
 
         // camera
-        camera = new THREE.PerspectiveCamera(
-            VIEW_ANGLE, width/height,
-            NEAR, FAR);
-        camera.position.z = 2;
+        if (d3gl.orthographicCamera) { // currently no primitive using ortho
+          camera = new THREE.OrthographicCamera();
+          MOUSE_SENSITIVITY = 1;
+				  camera.position.z = 5;
+        } else {
+          camera = new THREE.PerspectiveCamera(
+              VIEW_ANGLE, width/height,
+              NEAR, FAR);
+        }
+        if (!zoom) d3gl.zoom(2);
         scene.add(camera);
 
         // start the renderer
@@ -154,14 +287,32 @@ d3.gl = function() {
         gl.projector = new THREE.Projector();
         window.gl = gl;
     }
-
     function zoomUpdate(val) {
+        //TODO: in orthographic perspective, just make the camera window smaller
         zoom *= val;
         zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
     };
-    function dragUpdate (evt) {
-        d3gl.rotation.lon -= (evt.pageX - dragStart[0])*MOUSE_SENSITIVITY*zoom;
-        d3gl.rotation.lat += (evt.pageY - dragStart[1])*MOUSE_SENSITIVITY*zoom;
+    function dragUpdate(evt) {
+				var inverseRotationMatrix = new THREE.Matrix4().getInverse(d3gl.rotationMatrix);
+				// Conver camera coordinates x, y, z axes to object coordinate axes
+				var x = new THREE.Vector3(1, 0, 0).applyMatrix4(inverseRotationMatrix);
+				var y = new THREE.Vector3(0, 1, 0).applyMatrix4(inverseRotationMatrix);
+
+				// diff y: rotate around the x-axis-turned-object-coord axis
+				var diffY = (evt.pageY - dragStart[1])*MOUSE_SENSITIVITY*(Math.PI/180)*zoom;
+				var rotateY = new THREE.Matrix4().makeRotationAxis(x, diffY);
+				d3gl.rotationMatrix.multiply(rotateY);
+
+				// diff x: rotate around the y-axis-turned-object-coord axis
+				var diffX = (evt.pageX - dragStart[0])*MOUSE_SENSITIVITY*(Math.PI/180)*zoom;
+				var rotateX = new THREE.Matrix4().makeRotationAxis(y, diffX);
+				d3gl.rotationMatrix.multiply(rotateX);
+
+        // shitty deprecated rotation, soon to be removed...
+				d3gl.rotation.lon -= (evt.pageX - dragStart[0])*MOUSE_SENSITIVITY*zoom;
+				d3gl.rotation.lat += (evt.pageY - dragStart[1])*MOUSE_SENSITIVITY*zoom;
+				d3gl.rotation.lon %= 360;
+				d3gl.rotation.lat %= 360;
     };
     function fireMouseEvent (name, gl, evt) {
         var handlers = eventHandlers[name];
@@ -188,6 +339,9 @@ d3.gl.globe = function(){
     // atmosphere is turned off by default
     var fnAtmosphere = function(d) { return false; };
 
+    var update;
+    var numGlobes = 0;
+
     // *** PRIVATE
     // overlays. these are functions that either render onto the globe tex
     // (eg colored countries), or which run after the globe itself to draw
@@ -202,6 +356,9 @@ d3.gl.globe = function(){
     // *** RENDER FUNCTION
     // see http://bost.ocks.org/mike/chart/
     function globe(g){
+        numGlobes = g[0].length;
+        update = numGlobes;
+        console.log(update);
         g.each(globeInit);
     }
     function globeInit(d,i){
@@ -218,6 +375,7 @@ d3.gl.globe = function(){
         gl.index = i;
         gl.shaders = shaders.globe;
         gl.textures = {};
+
 
         // load textures
         var canvas = document.createElement("canvas");
@@ -252,6 +410,16 @@ d3.gl.globe = function(){
     // called 60 times per second
     function globeRender(gl) {
         d3gl.update(gl);
+
+        // For primitives such as heatmap that we don't want to update
+        // per frame but rather when manually called
+        if (update) {
+          console.log(update);
+          gl.update = {
+            'heatmap': true
+          };
+          update--;
+        }
         d3gl.fireEvent("update", gl);
 
         //gl.scene.overrideMaterial = true;
@@ -528,23 +696,26 @@ d3.gl.globe = function(){
         if(typeof val === "function") fnAtmosphere = val;
         else fnAtmosphere = function(){return val;}
         return globe;
-    }
+    };
     globe.on = function(eventName, callback){
         d3gl.addEventHandler(eventName, callback);
         return globe;
-    }
+    };
     globe.rotation = function(latlon){
         if(!arguments.length) return rotation;
         if(!latlon || !latlon.lat || !latlon.lon) throw "Invalid rotation()";
         rotation = latlon;
         return globe;
-    }
+    };
     globe.zoom = function(z){
         if(!arguments.length) return d3gl.zoom();
         if(!z || z<0) throw "Invalid zoom()";
         d3gl.zoom(z);
         return globe;
-    }
+    };
+    globe.update = function() {
+        update = numGlobes;
+    };
 
     // *** FUNCTIONS
     globe.rotateTo = function(latlon, ms){
@@ -1282,56 +1453,57 @@ d3.gl.globe = function(){
     // heatmap    
     globe.heatmap = function() {
         var fnData = function(d) { return d; };
-        var heatCanvas = document.createElement("canvas"); // hidden canvas
-        var gradientCanvas = document.createElement("canvas");
 
         var fnLat, fnLon; // returns latitude and longitude for data point
         var fnDensity; // takes data object and returns density [0, 1]
+        var fnGradient; // gives back gradient stops for density
 
-        var radius, gradient;
-        var heatmapImg;
+        var radius, blur;
 
-        var update = true; // heatmap is manually updated
         function heatmap(gl, context) {
-            if(update) {
-                heatmapImg = renderHeatmap(gl, context, fnData(gl.datum));
-                update = false;
+            if(gl.update['heatmap']) {
+                gl.update['heatmap'] = false;
+                gl.heatCanvas = document.createElement("canvas"); // hidden canvas
+                gl.gradientCanvas = document.createElement("canvas");
+                gl.heatmapImg = renderHeatmap(gl, context, fnData(gl.datum));
             }
-            context.drawImage(heatmapImg, 0, 0, context.width, context.height);
+            context.drawImage(gl.heatmapImg, 0, 0, context.width, context.height);
         }
 
         function renderHeatmap(gl, context, data) {
             var rx = context.width;
             var ry = context.height;
-            heatCanvas.width = rx;
-            heatCanvas.height = ry;
-            var heatContext = heatCanvas.getContext("2d");
+            gl.heatCanvas.width = rx;
+            gl.heatCanvas.height = ry;
+            var heatContext = gl.heatCanvas.getContext("2d");
             heatContext.clearRect(0, 0, rx, ry);
 
             // set up gradient
-            if(!gradient) {
-                gradient = {};
-                gradient.stops = { 0.4: "rgb(0,0,255)", 0.5: "rgb(0,255,255)",
+            if(!gl.gradient) {
+                gl.gradient = {};
+                gl.gradient.stops = fnGradient ? fnGradient(gl.datum, gl.index) :
+                  { 0.4: "rgb(0,0,255)", 0.5: "rgb(0,255,255)",
                     0.6: "rgb(0,255,0)", 0.8: "yellow", 0.95: "rgb(255,0,0)"};
-                gradient.length = gradientCanvas.width = 100;
-                gradientCanvas.height = 10;
-                var gradientContext = gradientCanvas.getContext("2d");
+                gl.gradient.length = gl.gradientCanvas.width = 100;
+                gl.gradientCanvas.height = 10;
+                var gradientContext = gl.gradientCanvas.getContext("2d");
                 var linearGradient = gradientContext.createLinearGradient(0, 0, 100, 10);
 
-                Object.keys(gradient.stops).forEach(function(key) {
-                    linearGradient.addColorStop(key, gradient.stops[key]);
+                Object.keys(gl.gradient.stops).forEach(function(key) {
+                    linearGradient.addColorStop(parseFloat(key), gl.gradient.stops[key]);
                 });
 
                 gradientContext.fillStyle = linearGradient;
                 gradientContext.fillRect(0, 0, 100, 10);
-                gradient.data = gradientContext.getImageData(0, 5, 100, 5).data;
+                gl.gradient.data = gradientContext.getImageData(0, 5, 100, 5).data;
             }
             
             // set shadow properties
             if(!radius) radius = 0.01*rx; // default radius is 1% of width
+            if(!blur) blur = radius;
             heatContext.shadowOffsetX = 20000;
             heatContext.shadowOffsetY = 20000;
-            heatContext.shadowBlur = radius;
+            heatContext.shadowBlur = blur;
 
             // for each data, draw a shadow
             data.forEach(function(d) {
@@ -1339,6 +1511,8 @@ d3.gl.globe = function(){
                 var lat = parseFloat(fnLat(d));
                 var lon = parseFloat(fnLon(d));
                 var density = fnDensity(d);
+                if (density > 1) density = 0.99;
+
                 //var pradius = radius * context.width / 360.0;
                 var plat = ry * (1-(lat + 90)/180);
                 var plon = rx * (lon + 180)/360;
@@ -1357,17 +1531,17 @@ d3.gl.globe = function(){
                 for(var c=0; c<rx; c++) {
                     var idx = (c + r*rx)*4;
                     var density = pixels.data[idx + 3]/255;
-                    var offset = (Math.floor(gradient.length * density))*4;
-                    pixels.data[idx] = gradient.data[offset];
-                    pixels.data[idx + 1] = gradient.data[offset + 1];
-                    pixels.data[idx + 2] = gradient.data[offset + 2];
+                    var offset = (Math.floor(gl.gradient.length * density))*4;
+                    pixels.data[idx] = gl.gradient.data[offset];
+                    pixels.data[idx + 1] = gl.gradient.data[offset + 1];
+                    pixels.data[idx + 2] = gl.gradient.data[offset + 2];
                 }
             }
             heatContext.clearRect(0, 0, rx, ry);
             heatContext.putImageData(pixels, 0, 0);
 
             var map = new Image();
-            map.src = heatCanvas.toDataURL("image/png");
+            map.src = gl.heatCanvas.toDataURL("image/png");
             return map;
         }
 
@@ -1381,6 +1555,19 @@ d3.gl.globe = function(){
         heatmap.radius = function(val) {
             if(arguments.length == 0) return radius;
             radius = val;
+            return heatmap;
+        }
+
+        heatmap.blur = function(val) {
+            if(arguments.length == 0) return blur;
+            blur = val;
+            return heatmap;
+        }
+
+        heatmap.gradient = function(val) {
+            if(arguments.length == 0) return fnGradient;
+            if(typeof val == "function") fnGradient = val;
+            else fnGradient = function(){return val;};
             return heatmap;
         }
 
@@ -1528,7 +1715,6 @@ d3.gl.model = function() {
     var d3gl = d3.gl();
 
     // *** PRIVATE
-    var zoom = 2.0, rotation = {"lat":0,"lon":0};
     var shaders = {}; // hardcoded strings, see bottom
     var fnMesh, fnTex, fnColor, fnMaterial, fnScale;
 
@@ -1571,14 +1757,14 @@ d3.gl.model = function() {
             gl.obj = {};
             gl.obj.geometry = g;
             gl.obj.materials = m;
-            gl.obj.bbox = getBoundingBox(gl.obj.geometry);
             gl.obj.scale = fnScale ? fnScale(d) : 1.;
 
             // Init WebGL elements for this model
             d3gl.init(gl);
 
             initLights(gl); // set up scene, transform, etc
-            initModel(gl, true); // pre-process model for display and add to scene
+
+            initModel(gl); // pre-process model for display and add to scene
             gl.element.appendChild(gl.renderer.domElement);
 
             // Register update function
@@ -1596,9 +1782,14 @@ d3.gl.model = function() {
         d3gl.fireEvent("update", gl);
 
         // appropriately rotate & zoom
+        /*
         gl.model.rotation.x = d3gl.rotation.lat*Math.PI/180; 
         gl.model.rotation.y = -d3gl.rotation.lon*Math.PI/180;
         gl.model.updateMatrix();
+        */
+				gl.model.matrix.copy(d3gl.rotationMatrix);
+				gl.model.matrix.multiply(gl.model.adjustedMatrix);
+				gl.model.matrixWorldNeedsUpdate = true;
 
         // render scene
         gl.renderer.render(gl.scene, gl.camera);
@@ -1654,7 +1845,7 @@ d3.gl.model = function() {
 
         // Remove old model and add newly initialized one.
         gl.scene.remove(gl.model);
-        initModel(gl, false); // Don't translate vertices again
+        initModel(gl, gl.model.adjustedMatrix); // Don't translate vertices again
     }
 
     // *** INIT FUNCTIONS
@@ -1673,27 +1864,22 @@ d3.gl.model = function() {
         gl.scene.add(pointLight);
     }
 
-    function initModel(gl, adjustCenter) {
+    function initModel(gl, adjustedMatrix) {
+				console.log("Initializing model!");
         gl.model = new THREE.Mesh(gl.obj.geometry,
             new THREE.MeshFaceMaterial(gl.obj.materials));
         gl.model.matrixAutoUpdate = false;
 
         // find appropriate scale for object
-        var w = gl.obj.bbox.max.x - gl.obj.bbox.min.x;
-        var h = gl.obj.bbox.max.y - gl.obj.bbox.min.y;
-        var depth = gl.obj.bbox.max.z - gl.obj.bbox.min.z;
-        var scale = 1.5/Math.max(w, Math.max(h, depth));
-        scale *= gl.obj.scale;
-        gl.model.scale.x = gl.model.scale.y = gl.model.scale.z = scale;
+        d3gl.scaleModel(gl.model, fnScale ? fnScale(d) : 1., gl);
 
-        if (adjustCenter) {
-            var centerPoint = new THREE.Vector3().addVectors(gl.obj.bbox.min, gl.obj.bbox.max)
-                .multiplyScalar(0.5);
-            var centerTranslation = new THREE.Vector3().subVectors(
-                gl.model.position, centerPoint);
-            centerModel(gl.model, centerTranslation);
-            gl.model.updateMatrix();
-        }
+        // Translate to center model in viewport
+        if (!adjustedMatrix) {
+					d3gl.centerModel(gl.model, gl);
+					gl.model.adjustedMatrix = new THREE.Matrix4().copy(gl.model.matrix);
+				} else {
+					gl.model.adjustedMatrix = new THREE.Matrix4().copy(adjustedMatrix);
+				}
         
         gl.scene.add(gl.model); 
     }
@@ -1721,25 +1907,6 @@ d3.gl.model = function() {
     }
 
     // *** HELPER FUNCTIONS 
-    function centerModel(object, centerTranslation) {
-        if(object.geometry){
-            object.geometry.vertices.forEach(function(vertex) {
-                vertex.add(centerTranslation);
-            });
-        }else{
-            for(var i in object.children){
-                child = object.children[i];
-                centerModel(child, centerTranslation);
-            }
-        } 
-    }
-
-    function getBoundingBox(geometry) {
-        if(!geometry) throw "D3GL Model only supports meshes with one geometry"
-        if(geometry.boundingBox) return geometry.boundingBox;
-        geometry.computeBoundingBox();
-        return geometry.boundingBox;
-    }
 
     /**
      * Given a texture path, returns the object with auto-filled params
@@ -1780,9 +1947,9 @@ d3.gl.model = function() {
         return model;
     };
     model.zoom = function(z){
-        if(!arguments.length) return zoom;
+        if(!arguments.length) return d3gl.zoom();
         if(!z || z<0) throw "Invalid zoom()";
-        zoom = z;
+        d3gl.zoom(z);
         return model;
     };
     /** Functions to swap materials for the model. The
@@ -1904,4 +2071,620 @@ d3.gl.model = function() {
 ].join("\n");
 
     return model;
+};
+
+d3.gl.graph = function() {
+    var d3gl = d3.gl();
+    var overlay3D = [];
+
+    var graph = function(g) {
+        g.each(graphInit);
+    };
+    
+    function graphInit(d, i) {
+        // gl stores all the rendering state for each individual model.
+        // remember that a call to d3.gl.model() may result in multiple model (one per datum)
+        var gl = {};
+        gl.element = this; // the D3 primitive: one dom element, one datum
+        gl.datum = d;
+        gl.index = i;
+        gl.update = {
+          'points': true,
+          'lines': true,
+          'axis': true
+        };
+        gl.updateGraph = true;
+
+        // Pass in true for orthographic perspective
+        //d3gl.init(gl, true);
+        d3gl.init(gl);
+
+        gl.graph = new THREE.Object3D();
+        gl.graph.matrixAutoUpdate = false;
+
+        Object.keys(gl.update).forEach(function(key) {
+          gl.update[key] = true;
+        });
+        overlay3D.forEach(function(overlayFn) {
+            overlayFn(gl);
+        });
+
+        d3gl.scaleModel(gl.graph, 1, gl);
+        d3gl.centerModelByWeight(gl.graph, gl);
+        gl.graph.adjustedMatrix = new THREE.Matrix4().copy(gl.graph.matrix);
+
+        gl.graph.children.forEach(function(child) {
+            d3gl.scaleModel(child, 1, gl);
+            d3gl.centerModel(child, gl);
+        });
+
+        gl.scene.add(gl.graph);
+
+        // Add canvas to DOM
+        gl.element.appendChild(gl.renderer.domElement);
+        graphRender(gl);
+    }
+    function graphRender(gl) {
+        d3gl.update(gl);
+        d3gl.fireEvent("update", null);
+        
+        // Update rotation
+        gl.graph.matrix.copy(d3gl.rotationMatrix);
+        gl.graph.matrix.multiply(gl.graph.adjustedMatrix);
+        gl.graph.matrixWorldNeedsUpdate = true;
+
+/*
+        Object.keys(gl.meshes).forEach(function(key) {
+            gl.meshes[key].forEach(function(m) {
+								m.matrix.copy(d3gl.rotationMatrix);
+								m.matrix.multiply(m.adjustedMatrix);
+                m.matrixWorldNeedsUpdate = true;
+            }); 
+        });
+        */
+
+        gl.renderer.render(gl.scene, gl.camera);
+        requestAnimationFrame(function() { graphRender(gl);});
+    }
+    graph.width = function(val) {
+        var ret = d3gl.width(val);
+        return ret ? ret : graph;
+    };
+    graph.height = function(val) {
+        var ret = d3gl.height(val);
+        return ret ? ret : graph;
+    };
+    graph.zoom = function(z){
+        if(!arguments.length) return d3gl.zoom();
+        if(!z || z<0) throw "Invalid zoom()";
+        d3gl.zoom(z);
+        return graph;
+    };
+    graph.orient = function(val) {
+      d3gl.orient(val);
+      return graph;
+    };
+    /*
+    graph.update = function() {
+      updateGraph = true;
+    };
+    */
+
+
+    graph.points = function() {
+        /** User-defined callback functions **/
+        var fnScale, fnColor, fnSize;
+        var fnData = function(d) { return d; };
+        var fnVertex = function(d) { return d; };
+
+        var points = function(gl) {
+            if (gl.update['points']) {
+              gl.update['points'] = false;
+              initPoints(gl);
+            }
+            // TODO: what if user updates colors, etc?
+        };
+
+        function initPoints(gl) {
+            var dataArray, scale, geometry, material, texture, pointcloud;
+            if (!fnData || !(dataArray = fnData(gl.datum, gl.index))) {
+                throw "Please specify point cloud data using pointcloud.data";
+            }
+            scale = fnScale ? fnScale(gl.datum, gl.index) : 1;
+
+            geometry = new THREE.Geometry();
+            geometry.colors = [];
+            dataArray.forEach(function(datum, vIdx) {
+                var vertex = fnVertex(datum);
+                geometry.vertices.push(new THREE.Vector3(
+                    parseFloat(vertex.x), parseFloat(vertex.y), parseFloat(vertex.z)));
+                // TODO: following shouldn't use gl.datum it should use datum
+                geometry.colors.push(new THREE.Color(
+                    fnColor ? fnColor(datum, vIdx) : 0x000000));
+            });
+            texture = new THREE.Texture(generatePointTexture());
+            texture.needsUpdate = true;
+
+            material = new THREE.ParticleBasicMaterial({
+                'vertexColors': true,
+                'size': fnSize ? fnSize() : 50,
+                'sizeAttenuation': false,
+                'map': texture,
+                'depthTest': false,
+                'transparent': true,
+                'opacity': 0.7
+            });
+
+            pointcloud = new THREE.ParticleSystem(geometry, material);
+            //TODO: only sort particles when less than some threshold
+            if (geometry.vertices.length < 1000) {
+              pointcloud.sortParticles = true;
+            }
+            pointcloud.matrixAutoUpdate = false;
+            gl.graph.add(pointcloud);
+        }
+        function generatePointTexture() {
+            // create canvas
+            var size = 128;
+            var canvas = document.createElement( 'canvas' );
+            canvas.width = size;
+            canvas.height = size;
+            
+            // draw circle
+            var context = canvas.getContext( '2d' );
+            var radius = size / 2;
+
+            context.beginPath();
+            context.arc(radius, radius, radius, 0, 2*Math.PI, false);
+            context.fillStyle = "#fff";
+            context.fill();
+
+            return canvas;
+        }
+
+        points.scale = function(val) {
+            if (arguments.length===0) return fnScale;
+            if (typeof val === "function") fnScale = val;
+            else fnScale = function() { return val; };
+            return points;
+        };
+        points.data = function(val) {
+            if (arguments.length===0) return fnData;
+            if (typeof val === "function") fnData = val;
+            else fnData = function() { return val; };
+            return points;
+        };
+        points.vertex = function(val) {
+            if (arguments.length===0) return fnVertex;
+            if (typeof val === "function") fnVertex = val;
+            else fnVertex = function() { return val; };
+            return points;
+        };
+        points.color = function(val) {
+            if (arguments.length===0) return fnColor;
+            if (typeof val === "function") fnColor = val;
+            else fnColor = function() { return val; };
+            return points;
+        };
+        points.size = function(val) {
+            if (arguments.length===0) {
+              return fnSize;
+            }
+            if (typeof val === "function") {
+              error("d3.gl.graph.points.size takes a scalar value.");
+            } else {
+              fnSize = function() { return val; };
+            }
+            return points;
+        };
+
+        overlay3D.push(points);
+        return points;
+    };
+
+    graph.lines = function() {
+        var fnData = function(d) { return d; };
+        var fnVertices = function(d) { return d; };
+        var fnColor, fnThickness, fnOpacity;
+
+        var lines = function(gl) {
+            if (!gl.update['lines']) return;
+            gl.update['lines'] = false;
+
+            var linesObject = new THREE.Object3D();
+            var dataArray = fnData(gl.datum, gl.index);
+            $.each(dataArray, function(index, datum) {
+                var vertices = fnVertices(datum, index);
+                var geometry, material, line, color, thickness;
+
+                geometry = new THREE.Geometry();
+                for (var i = 0; i < vertices.length; i += 3) {
+                    var vertex = new THREE.Vector3(
+                      parseFloat(vertices[i]),
+                      parseFloat(vertices[i+1]),
+                      parseFloat(vertices[i+2])
+                    );
+                    geometry.vertices.push(vertex);
+                }
+
+                // TODO use fnColor, fnThickness
+                color = fnColor ?  new THREE.Color(fnColor(datum)) :
+                  new THREE.Color(0x000000);
+                thickness = fnThickness ? fnThickness(datum) : 2;
+                opacity = fnOpacity ? fnOpacity(datum) : 1;
+                material = new THREE.LineBasicMaterial({
+                    'color': color,
+                    'opacity': opacity,
+                    'linewidth': thickness
+                }); 
+                
+                // Create line and adjust model to fit viewport
+                line = new THREE.Line(geometry, material);
+                linesObject.add(line);
+            });
+            gl.graph.add(linesObject);
+        };
+
+        lines.data = function(val) {
+            if (arguments.length===0) return fnData;
+            if (typeof val === "function") fnData = val;
+            else fnData = function() { return val; };
+            return lines;
+        };
+        lines.vertices = function(val) {
+            if (arguments.length===0) return fnVertices;
+            if (typeof val === "function") fnVertices = val;
+            else fnVertices = function() { return val; };
+            return lines;
+        };
+        lines.color = function(val) {
+            if (arguments.length===0) return fnColor;
+            if (typeof val === "function") fnColor = val;
+            else fnColor = function() { return val; };
+            return lines;
+        };
+        lines.thickness = function(val) {
+            if (arguments.length===0) return fnThickness;
+            if (typeof val === "function") fnThickness = val;
+            else fnThickness = function() { return val; };
+            return lines;
+        };
+        lines.opacity = function(val) {
+            if (arguments.length===0) return fnOpacity;
+            if (typeof val === "function") fnOpacity = val;
+            else fnOpacity = function() { return val; };
+            return lines;
+        };
+
+        overlay3D.push(lines);
+        return lines;
+    };
+
+    /** AXIS **/
+    //TODO: make ticks and label separate closures under axis
+    // make tick & label size in terms of pointcloud dimensions
+    // (i.e. scale it with gl.scale)
+    graph.axis = function() {
+        var axisUpdate = true;
+        var fnData = function(d) { return d; };
+        var fnScale, fnOrient, fnThickness, fnOffset, fnColor;
+        var fnTicks;
+        var ticksRenderer, labelRenderer;
+
+        // Called once per frame
+        var axis = function(gl) {
+            if (!gl.update['axis']) return;
+            gl.update['axis'] = false;
+
+            // Num data elements = num axes for graph
+            var data = fnData(gl.datum);
+
+            // For each axis, create and add meshes to scene
+            data.forEach(function(datum) {
+                var orient, scale, p0, p1, offset;
+                orient = fnOrient(datum);
+                scale = fnScale(datum);
+                p0 = scale.domain()[0];
+                p1 = scale.domain()[1];
+
+                // The offset corresponding to the line's orientation
+                // will be ignored.
+                offset = fnOffset ? fnOffset(datum) : {"x": 0, "y": 0, "z": 0};
+
+                /* Create axis as line */
+                drawLine(gl, datum, offset);
+
+                /* Create tick marks as particles with texture */ 
+                var drawTicks = fnTicks ? fnTicks(datum) : true;
+                if(drawTicks && ticksRenderer) ticksRenderer(gl, datum, offset);
+
+                /* Create a label for the axis */
+                if(drawTicks && labelRenderer) labelRenderer(gl, datum, offset);
+            });
+        };
+        function drawLine(gl, datum, offset) {
+            var orient, scale, p0, p1, color;
+            orient = fnOrient(datum);
+            scale = fnScale(datum);
+            p0 = scale.domain()[0];
+            p1 = scale.domain()[1];
+            color = fnColor ? fnColor(datum) : 0x000000;
+
+            var lineGeometry, v0, v1, lineMaterial, line;
+            
+            // Line lineGeometry
+            lineGeometry = new THREE.Geometry();
+            lineGeometry.vertices.push(getPointOnAxis(gl, orient, p0, offset));
+            lineGeometry.vertices.push(getPointOnAxis(gl, orient, p1, offset));
+
+            // Line material
+            lineMaterial = new THREE.LineBasicMaterial({
+                'color': new THREE.Color(color),
+                'opacity': 1,
+                'linewidth': fnThickness ? fnThickness(datum) : 3
+            }); 
+            
+            // Create and add line
+            line = new THREE.Line(lineGeometry, lineMaterial);
+						line.adjustedMatrix = new THREE.Matrix4().copy(line.matrix);
+            line.matrixAutoUpdate = false;
+            gl.graph.add(line);
+        }
+        function getPointOnAxis(gl, orient, p, offset) {
+            if (!offset) {
+              offset = {"x": 0, "y": 0, "z": 0};
+            }
+            var v = new THREE.Vector3(
+                orient === "x" ? p : offset["x"],
+                orient === "y" ? p : offset["y"],
+                orient === "z" ? p : offset["z"]
+            );
+            return v;
+        }
+        function generateTickMarkTexture(tick, size, font, color) {
+            // create canvas
+            size = size ? size : 64;
+            var canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            
+            var context = canvas.getContext( '2d' );
+
+            context.fillStyle = color ? color : "#000";
+            context.font = font ? font : "bold 16px Arial";
+            context.fillText(tick, size/3, size/3);
+
+            return canvas;
+        }
+        axis.data = function(val) {
+            if (arguments.length===0) return fnData;
+            if (typeof val === "function") fnData = val;
+            else fnData = function() { return val;};
+            return axis;
+        };
+        // val = function(datum, index) {
+        //    return d3.scale
+        // }
+        axis.scale = function(val) {
+            if (arguments.length===0) return fnScale;
+            if (typeof val === "function") fnScale = val;
+            else fnScale = function() { return val;};
+            return axis;
+        };
+        // val = function(datum, index) {
+        //    return {"x"|"y"|"z"}
+        // }
+        axis.orient = function(val) {
+            if (arguments.length===0) return fnOrient;
+            if (typeof val === "function") fnOrient = val;
+            else fnOrient = function() { return val;};
+            return axis;
+        };
+        axis.color = function(val) {
+            if (arguments.length===0) return fnColor;
+            if (typeof val === "function") fnColor = val;
+            else fnColor = function() { return val;};
+            return axis;
+        };
+        axis.thickness = function(val) {
+            if (arguments.length===0) return fnThickness;
+            if (typeof val === "function") fnThickness = val;
+            else fnThickness = function() { return val;};
+            return axis;
+        };
+        axis.offset = function(val) {
+            if (arguments.length===0) return fnOffset;
+            if (typeof val === "function") fnOffset = val;
+            else fnOffset = function() { return val;};
+            return axis;
+        };
+        axis.drawTicks = function(val) {
+            if (arguments.length===0) return fnTicks;
+            if (typeof val === "function") fnTicks = val;
+            else fnTicks = function() { return val;};
+            return axis;
+        };
+
+        /** TICKS on axis **/
+        axis.ticks = function() {
+            var fnCount, fnFormat, fnSize,
+                fnFont, fnResolution, fnColor;
+            //TODO fnValues
+
+            var ticks = function(gl, datum, offset) {
+                var orient, scale, ticks, count, tickMarks;
+                orient = fnOrient(datum);
+                scale = fnScale(datum);
+
+                // TICKS should be an array of tick marks on the axis
+                // ex) [-1, 0, 1]
+                ticks = scale.ticks(fnCount(datum));
+                console.log(ticks);
+                ticks.splice(0, 1);
+                console.log(ticks);
+
+                // tickMarks is a group of tickMark meshes
+                tickMarks = new THREE.Object3D();
+
+                // For each tick, create a tick mesh (a particle system with one
+                // particle) and add it to tickMarks
+                ticks.forEach(function(tick) {
+                    var tickMark, tickTex, mesh, size, font, color;
+                    
+                    // Format tick if user has specified a formatting function
+                    if (fnFormat) tick = fnFormat(tick);
+
+                    tickMark = new THREE.Geometry();
+                    tickMark.vertices = [getPointOnAxis(gl, orient, tick, offset)];
+
+                    if (fnResolution) tickResolution = fnResolution(datum);
+                    if (fnFont) font = fnFont(datum);
+                    if (fnColor) color = fnColor(datum);
+                    tickTex = new THREE.Texture(generateTickMarkTexture(
+                        tick, tickResolution, font, color));
+                    tickTex.needsUpdate = true;
+
+                    if (fnSize) size = fnSize(datum);
+                    mesh = new THREE.ParticleSystem(tickMark,
+                        new THREE.ParticleBasicMaterial({
+                            'size': size,
+														'sizeAttenuation': false,
+                            'map': tickTex,
+                            'transparent': true,
+                            'depthTest': false
+                        })
+                    );
+                    tickMarks.add(mesh);
+                });
+
+								tickMarks.adjustedMatrix = new THREE.Matrix4().copy(
+									tickMarks.matrix);
+                tickMarks.matrixAutoUpdate = false;
+                gl.graph.add(tickMarks);
+            };
+
+            ticks.count = function(val) {
+                if (arguments.length===0) return fnCount;
+                if (typeof val === "function") fnCount = val;
+                else fnCount = function() { return val;};
+                return ticks;
+            };
+            ticks.format = function(val) {
+                if (arguments.length===0) return fnFormat;
+                if (typeof val === "function") fnFormat = val;
+                else fnFormat = function() { return val;};
+                return ticks;
+            };
+            ticks.size = function(val) {
+                if (arguments.length===0) return fnSize;
+                if (typeof val === "function") fnSize = val;
+                else fnSize = function() { return val;};
+                return ticks;
+            };
+            ticks.resolution = function(val) {
+                if (arguments.length===0) return fnResolution;
+                if (typeof val === "function") fnResolution = val;
+                else fnResolution = function() { return val;};
+                return ticks;
+            };
+            ticks.font = function(val) {
+                if (arguments.length===0) return fnFont;
+                if (typeof val === "function") fnFont = val;
+                else fnFont = function() { return val;};
+                return ticks;
+            };
+            ticks.color = function(val) {
+                if (arguments.length===0) return fnColor;
+                if (typeof val === "function") fnColor = val;
+                else fnColor = function() { return val;};
+                return ticks;
+            };
+            
+            ticksRenderer = ticks;
+            return ticks;
+        };
+
+        axis.label = function() {
+            var fnText, fnSize, fnResolution, fnFont, fnColor;
+
+            var label = function(gl, datum, offset) {
+                var orient, scale, p0, p1;
+                orient = fnOrient(datum);
+                scale = fnScale(datum);
+                p0 = scale.domain()[0];
+                p1 = scale.domain()[1];
+
+                var label, labelGeometry, labelTex, labelMesh;
+                label = fnText ? fnText(datum) : orient;
+
+                labelGeometry = new THREE.Geometry();
+                labelGeometry.vertices = [getPointOnAxis(gl, orient, p1, offset)];
+
+                var labelResolution, labelFont, labelColor;
+                if (fnResolution) labelResolution = fnResolution(datum);
+                if (fnFont) labelFont = fnFont(datum);
+                if (fnColor) labelColor = fnColor(datum);
+                labelTex = new THREE.Texture(generateTickMarkTexture(
+                  label, labelResolution, labelFont, labelColor));  
+                labelTex.needsUpdate = true;
+
+                labelMesh = new THREE.ParticleSystem(labelGeometry,
+                    new THREE.ParticleBasicMaterial({
+                        'size': fnSize ? fnSize(datum) : 50,
+												'sizeAttenuation': false,
+                        'map': labelTex,
+                        'transparent': true,
+                        'depthTest': false
+                    })
+                );
+								labelMesh.adjustedMatrix = new THREE.Matrix4().copy(labelMesh.matrix);
+                labelMesh.matrixAutoUpdate = false;
+                gl.graph.add(labelMesh);
+            };
+            label.text = function(val) {
+                if (arguments.length===0) return fnText;
+                if (typeof val === "function") fnText = val;
+                else fnText = function() { return val;};
+                return label;
+            }
+            label.size = function(val) {
+                if (arguments.length===0) return fnSize;
+                if (typeof val === "function") fnSize = val;
+                else fnSize = function() { return val;};
+                return label;
+            };
+            label.resolution = function(val) {
+                if (arguments.length===0) return fnResolution;
+                if (typeof val === "function") fnResolution = val;
+                else fnResolution = function() { return val;};
+                return label;
+            };
+            label.font = function(val) {
+                if (arguments.length===0) return fnFont;
+                if (typeof val === "function") fnFont = val;
+                else fnFont = function() { return val;};
+                return label;
+            };
+            label.color = function(val) {
+                if (arguments.length===0) return fnColor;
+                if (typeof val === "function") fnColor = val;
+                else fnColor = function() { return val;};
+                return label;
+            };
+            label.text = function(val) {
+                if (arguments.length===0) return fnText;
+                if (typeof val === "function") fnText = val;
+                else fnText = function() { return val;};
+                return label;
+            };
+
+            labelRenderer = label;
+            return label;
+        };
+
+        overlay3D.push(axis);
+        return axis;
+    };
+
+    return graph;
 };

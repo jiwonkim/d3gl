@@ -1,0 +1,65 @@
+h1 {
+	color: #fff;
+}
+body {
+	background: #000;
+}
+.neuron {
+	display: inline-block;
+  border: 2px solid #000;
+}
+.container {
+	width: 800px;
+  float: left;
+}
+.info {
+  width: 330px;
+  height: 600px;
+  padding: 20px;
+  float: left;
+
+  border-radius: 5px;
+  border: 1px solid white;
+  white-space: no-wrap;
+  color: #fff;
+  overflow: hidden;
+}
+.info h3 {
+  font-size: 40px;
+  margin: 10px;
+}
+.key {
+  margin-top: 10px;
+  margin-bottom: 5px;
+  color: #0f3;
+  font-size: 22px;
+}
+.value {
+  margin: 5px;
+  font-weight: 300;
+  font-size: 18px;
+  
+  padding-left: 25px;
+}
+.value a {
+  color: #fff;
+}
+.value a:hover {
+  color: #0f0;
+}
+.source {
+  position: absolute;
+  top: 0px;
+  right: 2px;
+  color: #fff;
+  font-size: 12px;
+}
+.source a {
+  color: #fff;
+}
+.neuron.hovered {
+  border: 2px solid #f0f;
+}
+.neuron.selected {
+  border: 2px solid #fff;
+}
