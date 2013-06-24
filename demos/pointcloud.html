@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>D3GL Pointcloud</title>
+    <link rel="stylesheet" href="../css/demo.css" />
+</head>
+<body>
+
+<h1>Hello Pointcloud!</h1>
+
+<script type="text/javascript" src="../js/jquery-1.8.2.js"></script>
+<script type="text/javascript" src="../js/jquery.mousewheel.js"></script>
+<script type="text/javascript" src="../js/d3.v2.js"></script>
+<script type="text/javascript" src="../js/RequestAnimationFrame.js"></script>
+<script type="text/javascript" src="../js/three.js"></script>
+<script type="text/javascript" src="../js/d3gl.js"></script>
+<!-- All scripts above are included here:
+<script type="text/javascript" src="../js/d3gl.min.js"></script> -->
+
+<script type="text/javascript">
+$(function(){
+    d3.csv("../models/pointcloud-house.csv", function(vertices) {
+				var graph = d3.gl.graph()
+					.width(800).height(500);
+
+				var pointcloud = graph.points()
+            .data(vertices)
+            .size(1)
+            .color(function(d, i) {
+                if (i > 50000) return 0xff0000;
+                else return 0x00ffff;
+                //return scaleColor(vIdx);
+            });
+
+        var scales = {
+            "x": d3.scale.linear().domain([-40, 40]),
+            "y": d3.scale.linear().domain([-40, 40]),
+            "z": d3.scale.linear().domain([0, 100])
+        };
+        var axis = graph.axis()
+            .data(["x", "y", "z"])
+            .scale(function(d) { return scales[d]; })
+            .orient(function(d) { return d; })
+            .thickness(1);
+
+        var ticks = axis.ticks()
+          .count(function(d) {
+              if (d=="z") return 5;
+              else return 4;
+          })
+          .font("16px Arial")
+          .size(50)
+          .resolution(64);
+        
+        var label = axis.label()
+          .size(100)
+          .resolution(128)
+          .font("bold 20px Helvetica")
+          .color("#00f");
+
+        d3.select("body").selectAll("span")
+            .data(["pointcloud-house"]).enter().append("span")
+            .call(graph);
+    });
+    
+});
+
+</script>
+</body>
+</html>
