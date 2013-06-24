@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>D3GL Scatterplot</title>
+    <link rel="stylesheet" href="../css/demo.css" />
+    <style type="text/css">
+.variable {
+  display: inline-block;
+  cursor: pointer;
+}
+div.selected {
+  background: #0f0;
+}
+.scatterplot-2d {
+  display: inline-block;
+}
+.scatterplot-2d td {
+  width: 153px;
+  height: 153px;
+  padding: 0;
+  margin: 0;
+  background-image: url('../img/iris-cropped.png');
+  background-repeat: no-repeat;
+  border: 2px solid #666;
+  opacity: 0.5;
+  cursor: pointer;
+}
+.scatterplot-2d td.selected {
+  opacity: 1;
+}
+    </style>
+</head>
+<body>
+
+<h1>Iris Petals and Sepals</h1>
+
+<script type="text/javascript" src="../js/jquery-1.8.2.js"></script>
+<script type="text/javascript" src="../js/jquery.mousewheel.js"></script>
+<script type="text/javascript" src="../js/d3.v2.js"></script>
+<script type="text/javascript" src="../js/RequestAnimationFrame.js"></script>
+<script type="text/javascript" src="../js/three.js"></script>
+<script type="text/javascript" src="../js/d3gl.js"></script>
+<!-- All scripts above are included here:
+<script type="text/javascript" src="../js/d3gl.min.js"></script> -->
+
+<div class="scatterplot-2d">
+  <table cellspacing="0">
+    <tr>
+      <td id="x-z"></td>
+      <td id="y-z"></td>
+      <td id="z-z"></td>
+    </tr>
+    <tr>
+      <td id="x-y"></td>
+      <td id="y-y"></td>
+      <td id="z-y"></td>
+    </tr>
+    <tr>
+      <td id="x-x"></td>
+      <td id="y-x"></td>
+      <td id="z-x"></td>
+    </tr>
+  </table>
+</div>
+
+<script type="text/javascript">
+/** Data extraction helper variables **/
+var columns = ['Sepal_Length','Sepal_Width','Petal_Length'];
+var axes = {
+  x: {
+    column: 'Sepal_Length',
+    label: 'Sepal Length (cm)', 
+    scale: d3.scale.linear().domain([3, 10]),
+    offset: {"x": 0, "y": 1, "z": 0},
+  },
+  y: {
+    column: 'Sepal_Width',
+    label: 'Sepal Width (cm)', 
+    scale: d3.scale.linear().domain([1, 8]),
+    offset: {"x": 3, "y": 0, "z": 0},
+  },
+  z: {
+    column: 'Petal_Length',
+    label: 'Petal Length (cm)', 
+    scale: d3.scale.linear().domain([0, 10]),
+    offset: {"x": 3, "y": 1, "z": 0},
+  }
+};
+var color = function(d) {
+    switch (d['Iris_Class']) {
+      case 'Iris-setosa': return 0x0066ff;
+      case 'Iris-versicolor': return 0xdd00ff;
+      case 'Iris-virginica': return 0x00ff44;
+    }
+};
+var offsets = [
+  [0, 1, 3, 5, 7], // offsets for the x axis
+  [0, 1, 3, 5, 7], // y axis
+  [0, 2, 4, 6, 8, 10]  // z axis
+];
+var axesData = [];
+for (var axis = 0; axis < offsets.length; axis++) {
+  for (var offsetAxis = 0; offsetAxis < offsets.length; offsetAxis++) {
+    offsets[offsetAxis].forEach(function(offset) {
+      axesData.push({
+        orient: ["x","y","z"][axis],
+        offset: {
+          x: offsetAxis===0 ? offset : 0,
+          y: offsetAxis===1 ? offset : 0,
+          z: offsetAxis===2 ? offset : 0,
+        },
+        ticks: axis === offsetAxis && offset == 0
+      });
+    });
+  }
+}
+
+$(function(){
+    var graph, scatterplot, anchors, axis, ticks, labels;
+    
+    /** CONTROLS **/
+    $('.scatterplot-2d td').each(function(i, cell) {
+        cell = $(cell);
+        var p = cell.attr('id').split('-');
+
+        // Which variables do x, y, and z correspond to right now?
+        var var1 = axes[p[0]].column;
+        var var2 = axes[p[1]].column;
+
+        var x = -columns.indexOf(var1)*157;
+        var y = (columns.indexOf(var2)-3)*157; 
+        cell.css("background-position", x + "px " + y + "px");
+      })
+    $('.scatterplot-2d td').click(function(evt) {
+        var cell = $(this);
+        $('.scatterplot-2d td').removeClass("selected");
+        cell.addClass("selected");
+
+        var p = cell.attr('id').split('-');
+        
+        if (p[0] === p[1]) return;
+
+        ['x', 'y', 'z'].forEach(function(axis) {
+          if (axis === p[0] || axis === p[1]) return;
+          if (p[0] < p[1]) graph.orient(axis);
+          else graph.orient('-' + axis);
+        });
+    });
+
+    /** RENDER 3D GRAPH **/
+    d3.csv("../data/iris_petals_and_sepals.csv", function(irisDataPoints) {
+
+        /*-------------------------*/
+        /*        D3GL CODE        */
+        /*-------------------------*/
+
+				graph = d3.gl.graph()
+					.width(600).height(400).zoom(6).orient("z");
+
+        /* Create the 3D scatterplot */
+				scatterplot = graph.points()
+          .data(irisDataPoints)
+          .vertex(function(d) {
+              return {
+                x: d[axes.x.column],
+                y: d[axes.y.column],
+                z: d[axes.z.column]
+              };
+          })
+          .size(15)
+          .color(color);
+
+        /* Draw lines anchoring the points to the xy plane */
+        anchors = graph.lines()
+          .data(irisDataPoints)
+          .vertices(function(d) {
+            return [
+              d[axes.x.column], d[axes.y.column], d[axes.z.column],
+              d[axes.x.column], d[axes.y.column], 0
+            ];
+          })
+          .color(color)
+          .thickness(1)
+          .opacity(0.2);
+
+        /* Draw axes */
+        axis = graph.axis()
+          .data(axesData)
+          .scale(function(d) {
+            return axes[d.orient].scale;
+          })
+          .orient(function(d) {
+            return d.orient;
+          })
+          .thickness(1)
+          .offset(function(d) {
+            var offset = axes[d.orient].offset;
+            if (!d.offset) return offset;
+
+            return {
+              x: d.offset["x"] ? d.offset["x"] + offset.x : offset.x,
+              y: d.offset["y"] ? d.offset["y"] + offset.y : offset.y,
+              z: d.offset["z"] ? d.offset["z"] + offset.z : offset.z
+            };
+          })
+          .color(function(d) {
+            if (d.ticks) return 0x000000;
+            else return 0xaaaaaa;
+          })
+          .drawTicks(function(d) {
+            return d.ticks;
+          });
+
+        ticks = axis.ticks()
+          .count(function(d) {
+            var domain = axes[d.orient].scale.domain();
+            return Math.floor((domain[1] - domain[0])/2);
+          })
+          .font("16px Arial")
+          .size(50)
+          .resolution(64);
+        
+        label = axis.label()
+          .size(200)
+          .resolution(256)
+          .font("bold 18px Helvetica")
+          .color("#00f")
+          .text(function(d) {
+            return axes[d.orient].label;
+          });
+
+        d3.select("body").selectAll("span")
+            .data(["iris"]).enter().append("span")
+            .call(graph);
+    });
+    
+});
+
+</script>
+</body>
+</html>
