@@ -136,23 +136,20 @@ function createGlobes(data) {
             return data[climateDataT]["data"];
         })
         .id(function(d){
-            // the id returned here must match the color in the shape texture
-            // such that r*10*10 + g*10 + b = id
+            // the id returned here must match the color
+            // in the shape texture such that r*10*10 + g*10 + b = id
             return country_code_map["alpha_code_to_country"][d["ISO_code"]]["country-code"];
         })
         .color(function(d){
-            if(d==mouseoverPoint) return [50, 50, 50, 255];
+            // d is a data element that represents a country's
+            // climate statistics for each month
+            if(d==mouseoverPoint) return d3.rgb(50, 50, 50);
             var values = d["monthly_data"];
             if(values.length>0) {
                 var value = parseInt(d["monthly_data"][monthIdx]["data"]);
-                var color = data[d["var"]].scale(value);
-                color = color.slice(1);
-                var sr = parseInt(color.substring(0, 2), 16);
-                var sg = parseInt(color.substring(2, 4), 16);
-                var sb = parseInt(color.substring(4), 16);
-                return [sr, sg, sb, 255];
+                return d3.rgb(data[d["var"]].scale(value));
             }
-            return [0, 0, 0, 0];
+            return d3.rgb(0, 0, 0);
         })
         .on("mousemove", function(evt) {
             if(evt.shape) {

@@ -22,10 +22,10 @@ $(function(){
 var meshes = [
     {mesh: "../models/apple/apple.js", texture: "../img/apple-poison-tex.jpg"},
     {mesh: "../models/apple/apple.js", texture: "../img/apple-yellow-tex.jpg"},
-		{mesh: "../models/bones/skull/skull.js", colors: [[1, 1, 1]]},
-    {mesh: "../models/toyplane/toyplane.js", colors: [[1, 0, 0], [0, 1, 0]]},
-    {mesh: "../models/toyplane/toyplane.js", colors: [[0.8, 0.8, 0], [0, 0.8, 0.8]]},
-    {mesh: "../models/toyplane/toyplane.js", colors: [[0.8, 0.4, 0.8], [0.1, 0.1, 0.8]]},
+		{mesh: "../models/bones/skull/skull.js", colors: [d3.rgb(255, 255, 255)]},
+    {mesh: "../models/toyplane/toyplane.js", colors: [d3.rgb(255, 0, 0), d3.rgb(0, 255, 0)]},
+    {mesh: "../models/toyplane/toyplane.js", colors: [d3.rgb(200, 200, 0), d3.rgb(0, 200, 200)]},
+    {mesh: "../models/toyplane/toyplane.js", colors: [d3.rgb(200, 100, 200), d3.rgb(25, 25, 200)]},
 ];
 var model = d3.gl.model()
     .width(380).height(380).zoom(4)

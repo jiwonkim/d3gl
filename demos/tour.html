@@ -122,14 +122,14 @@ function makePath(data) {
         .radius(0.4)
         .color(function(d) {
             if(selectedPoint==d) {
-                return "rgba(0, 0, 255, 0.8)";
+                return d3.rgb(0, 0, 255);
             } else if(mouseoverPoint==d) {
-                return "rgba(0, 255, 0, 0.8)";
+                return d3.rgb(0, 255, 0);
             } else {
-                return "rgba(255, 255, 255, 0.8)";
+                return d3.rgb(255, 255, 255);
             }
         })
-        .strokeColor("#000")
+        .strokeColor(d3.rgb("#000"))
         .lineWidth(2)
         .on('mousemove', function(evt) {
             mouseoverPoint = evt.point;

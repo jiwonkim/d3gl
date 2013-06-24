@@ -93,8 +93,8 @@ function createGlobes(data) {
             return country_code_map["alpha_code_to_country"][d["ISO_code"]]["country-code"];
         })
         .color(function(d){
-            if(d==mouseoverPoint) return [50, 50, 50, 255];
-            else return [255, 255, 255, 255];
+            if(d==mouseoverPoint) return d3.rgb(50, 50, 50);
+            else return d3.rgb(255, 255, 255);
         })
         .on("mousemove", function(evt) {
             if(evt.shape) {

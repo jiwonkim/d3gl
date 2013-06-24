@@ -97,8 +97,10 @@ $(function(){
                 else return Math.max(4 / (1 + dt/500), 1.5); // shrink old landings
             })
             .color(function(d){
-                if(d == mouseoverPoint) return "#fff"; // highlight
-                var russia = "#c00", usa = "#33b";
+                // highlight
+                if(d == mouseoverPoint) return d3.rgb("#fff");
+
+                var russia = d3.rgb("#c00"), usa = d3.rgb("#33b");
                 if(d.name.indexOf("Luna") >= 0) return russia;
                 if(d.name.indexOf("Venera") >= 0) return russia;
                 if(d.name.indexOf("Vega") >= 0) return russia;

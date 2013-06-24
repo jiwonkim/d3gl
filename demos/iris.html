@@ -88,9 +88,9 @@ var axes = {
 };
 var color = function(d) {
     switch (d['Iris_Class']) {
-      case 'Iris-setosa': return 0x0066ff;
-      case 'Iris-versicolor': return 0xdd00ff;
-      case 'Iris-virginica': return 0x00ff44;
+      case 'Iris-setosa': return d3.rgb("#0066ff");
+      case 'Iris-versicolor': return d3.rgb("#dd00ff");
+      case 'Iris-virginica': return d3.rgb("#00ff44");
     }
 };
 var offsets = [
@@ -204,8 +204,8 @@ $(function(){
             };
           })
           .color(function(d) {
-            if (d.ticks) return 0x000000;
-            else return 0xaaaaaa;
+            if (d.ticks) return d3.rgb("#000");
+            else return d3.rgb("#aaa");
           })
           .drawTicks(function(d) {
             return d.ticks;
@@ -224,7 +224,7 @@ $(function(){
           .size(200)
           .resolution(256)
           .font("bold 18px Helvetica")
-          .color("#00f")
+          .color(d3.rgb("#00f"))
           .text(function(d) {
             return axes[d.orient].label;
           });

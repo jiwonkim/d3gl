@@ -29,11 +29,11 @@ var CAT_BASE_PATH = BASE_PATH + "cat_spinal_cord/";
 var NUM_NEURONS = 9;
 
 var neuronColors = [
-	0xffffff, // soma
-	0xaaaaaa, // axon
-	0x00ff00, // basal dendrite
-	0xff00ff, // apical dendrite
-	0x888888 // other
+	"#ffffff", // soma
+	"#aaaaaa", // axon
+	"#00ff00", // basal dendrite
+	"#ff00ff", // apical dendrite
+	"#888888" // other
 ];
 var neurons = new Array(NUM_NEURONS);
 var filepaths = [
@@ -152,7 +152,7 @@ function renderNeurons() {
 			return d['vertices'];
 		})
 		.color(function(d) {
-			return colorScale(d['type']);
+			return d3.rgb(colorScale(d['type']));
 		})
 		.thickness(function(d) {
 			return thicknessScale(d['radius']);							

@@ -133,6 +133,12 @@ d3.gl = function() {
 
         model.updateMatrix();
     };
+
+    /** Some utility functions **/
+    d3gl.d3rgbToInt = function(d3rgb) {
+      return d3rgb.r*256*256 + d3rgb.g*256 + d3rgb.b;
+    }
+
     function translateModelVertices(model, translation) {
         if(model.geometry){
             model.geometry.vertices.forEach(function(vertex) {
@@ -769,19 +775,17 @@ d3.gl.globe = function(){
             // iterate over data elements and create data texture
             var array = fnData(gl.datum);
             var textureHeight = 1;
-            var textureWidth = 1024*3;
+            var textureWidth = 1024*3; // TODO 3 padding magic number
             var colorLookup = new Uint8Array(textureWidth*4);
             for (var i = 0; i < array.length; i++) {
                 var id = fnId(array[i]);
-                var idx = id*4*3;
+                var idx = id*3*4;
                 var color = fnColor(array[i]);
-                if(color.length<4) throw "Color function for shapes "+
-                    "does not return color of valid format [r, g, b, a]";
                 for (var j = 0; j < 3; j++) {
-                    colorLookup[idx + j*4] = color[0]; // r
-                    colorLookup[idx + j*4 + 1] = color[1]; // g
-                    colorLookup[idx + j*4 + 2] = color[2]; // b
-                    colorLookup[idx + j*4 + 3] = color[3]; // a
+                    colorLookup[idx + j*4] = color.r; // r
+                    colorLookup[idx + j*4 + 1] = color.g; // g
+                    colorLookup[idx + j*4 + 2] = color.b; // b
+                    colorLookup[idx + j*4 + 3] = 255; // a
                 }
             }
             
@@ -893,12 +897,22 @@ d3.gl.globe = function(){
         var fnLat, fnLon, fnColor, fnRadius;
         var fnStrokeColor = function(){return "#000";};
         var fnLineWidth = function(){return 0;}; // default = no stroke
+
+        /**
+         * context - canvas.context2D
+         * plat - int
+         * plon - int
+         * pradius - int
+         * color - d3.rgb
+         * strokeColor - d3.rgb
+         * lineWidth - int
+         */
         function drawCircle(context, plat, plon, pradius, color, strokeColor, lineWidth){
             context.beginPath();
             context.arc(plon, plat, pradius, 0, 2*Math.PI, false);
-            context.fillStyle = color;
+            context.fillStyle = color.toString();
             context.fill();
-            context.strokeStyle = strokeColor;
+            context.strokeStyle = strokeColor.toString();
             context.lineWidth = lineWidth;
             context.stroke();
         }
@@ -906,20 +920,25 @@ d3.gl.globe = function(){
             // render the points into a texture that goes on the globe
             var array = fnData(gl.datum);
             for(var i=0; i<array.length; i++) {
-                var elem = array[i];
-                var lat = parseFloat(fnLat(elem, i));
-                var lon = parseFloat(fnLon(elem, i));
+                var elem, lat, lon;
+                elem = array[i];
+                lat = parseFloat(fnLat(elem, i));
+                lon = parseFloat(fnLon(elem, i));
                 if(lat < -90 || lat > 90 || lon < -180 || lon > 180){
                     throw "invalid lat/lon: "+lat+","+lon;
                 }
-                var color = fnColor(elem, i);
-                var strokeColor = fnStrokeColor(elem, i);
-                var lineWidth = fnLineWidth(elem, i);
-                var radius = fnRadius(elem, i); // radius in degrees
+
+                var color, strokeColor, lineWidth, radius;
+                color = fnColor(elem, i);
+                strokeColor = fnStrokeColor(elem, i);
+                lineWidth = fnLineWidth(elem, i);
+                radius = fnRadius(elem, i); // radius in degrees
                 if(radius <= 0) return;
-                var pradius = radius * context.width / 360.0;
-                var plat = context.height * (1-(lat + 90)/180);
-                var plon = context.width * (lon + 180)/360;
+
+                var pradius, plat, plon;
+                pradius = radius * context.width / 360.0;
+                plat = context.height * (1-(lat + 90)/180);
+                plon = context.width * (lon + 180)/360;
 
                 // scale to mitigate projection distortion
                 var xscale = 1 / (Math.cos(lat*Math.PI/180) + 0.01);
@@ -1122,7 +1141,14 @@ d3.gl.globe = function(){
         }
         bars.color = function(val){
             if(arguments.length == 0) return fns.fnColor;
-            var fn = (typeof val == "function") ? val : function(){return val};
+            var fn = (typeof val == "function") ?
+              function(d) {
+                return d3gl.d3rgbToInt(val(d));
+              } :
+              function() {
+                return d3gl.d3rgbToInt(val);
+              };
+
             if(transitions.length>0) {
                 transitions[transitions.length-1].fnColor = fn;
             } else {
@@ -1819,7 +1845,10 @@ d3.gl.model = function() {
             if (texUrl) params['mapDiffuse'] = texUrl;
 
             var color = fnColor && fnColor(gl.datum, gl.index, mIdx);
-            if (color) params['colorDiffuse'] = color;
+            if (color) {
+              params['colorDiffuse'] =
+                [color.r / 255, color.g / 255, color.b / 255];
+            }
 
             var material = fnMaterial && fnMaterial(dl.datum, gl.index, mIdx);
             if (material) {
@@ -1865,7 +1894,6 @@ d3.gl.model = function() {
     }
 
     function initModel(gl, adjustedMatrix) {
-				console.log("Initializing model!");
         gl.model = new THREE.Mesh(gl.obj.geometry,
             new THREE.MeshFaceMaterial(gl.obj.materials));
         gl.model.matrixAutoUpdate = false;
@@ -2262,8 +2290,14 @@ d3.gl.graph = function() {
         };
         points.color = function(val) {
             if (arguments.length===0) return fnColor;
-            if (typeof val === "function") fnColor = val;
-            else fnColor = function() { return val; };
+            if (typeof val === "function") {
+              fnColor = function(d) {
+                return d3gl.d3rgbToInt(val(d));
+              };
+            }
+            else fnColor = function() {
+              return d3gl.d3rgbToInt(val);
+            };
             return points;
         };
         points.size = function(val) {
@@ -2339,8 +2373,18 @@ d3.gl.graph = function() {
         };
         lines.color = function(val) {
             if (arguments.length===0) return fnColor;
-            if (typeof val === "function") fnColor = val;
-            else fnColor = function() { return val; };
+
+            // val will either be a function that returns
+            // a d3_rgb object or a d3_rgb object itself.
+            // But fnColor needs to return a hex number
+            if (typeof val === "function") {
+              fnColor = function(d) {
+                return d3gl.d3rgbToInt(val(d));
+              };
+            }
+            else fnColor = function() {
+              return d3gl.d3rgbToInt(val);
+            };
             return lines;
         };
         lines.thickness = function(val) {
@@ -2450,7 +2494,7 @@ d3.gl.graph = function() {
             
             var context = canvas.getContext( '2d' );
 
-            context.fillStyle = color ? color : "#000";
+            context.fillStyle = color ? color.toString() : "#000";
             context.font = font ? font : "bold 16px Arial";
             context.fillText(tick, size/3, size/3);
 
@@ -2482,8 +2526,14 @@ d3.gl.graph = function() {
         };
         axis.color = function(val) {
             if (arguments.length===0) return fnColor;
-            if (typeof val === "function") fnColor = val;
-            else fnColor = function() { return val;};
+            if (typeof val === "function") {
+              fnColor = function(d) {
+                return d3gl.d3rgbToInt(val(d));
+              };
+            }
+            else fnColor = function() {
+              return d3gl.d3rgbToInt(val);
+            };
             return axis;
         };
         axis.thickness = function(val) {
@@ -2623,7 +2673,7 @@ d3.gl.graph = function() {
                 var labelResolution, labelFont, labelColor;
                 if (fnResolution) labelResolution = fnResolution(datum);
                 if (fnFont) labelFont = fnFont(datum);
-                if (fnColor) labelColor = fnColor(datum);
+                if (fnColor) labelColor = fnColor(datum).toString();
                 labelTex = new THREE.Texture(generateTickMarkTexture(
                   label, labelResolution, labelFont, labelColor));  
                 labelTex.needsUpdate = true;
